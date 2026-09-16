@@ -12,9 +12,22 @@ export default async function handler(req, res) {
   }
 
   try {
+    const configuredSecret = process.env.WEBHOOK_SECRET;
+    const suppliedSecret = req.query?.secret;
+
+    if (!configuredSecret || suppliedSecret !== configuredSecret) {
+      return res.status(401).json({
+        ok: false,
+        error: 'Unauthorized'
+      });
+    }
+
     const body = req.body ?? {};
 
-    console.log('TradingView webhook received:', body);
+    console.log('TradingView webhook received:', {
+      ...body,
+      secret: undefined
+    });
 
     return res.status(200).json({
       ok: true,
