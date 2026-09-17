@@ -1,34 +1,25 @@
 {
   "ok": true,
-  "engine": "SCALP-Ω Confluence Engine v1",
+  "engine": "SCALP-Ω GPT-5.6 Luna Analysis Engine v1",
+  "model": "gpt-5.6-luna",
   "source": "OKX",
   "instrument": "ETH-USDT-SWAP",
-  "analysisMode": "CLOSED_CANDLES_ONLY",
-  "fetchedAt": "2026-09-17T00:56:03.773Z",
-  "market": {
-    "price": 2419,
-    "openInterest": {
-      "oi": 6292439.350000022,
-      "oiCcy": 629243.9350000022,
-      "ts": 1789606563621
-    },
-    "fundingRate": 0.0000390918925962
-  },
-  "confluence": {
-    "longScore": 35,
-    "shortScore": 17.5,
+  "fetchedAt": "2026-09-17T14:17:19.276Z",
+  "deterministicConfluence": {
+    "longScore": 52.5,
+    "shortScore": 15,
     "evidence": [
       {
         "name": "Structure",
         "weight": 20,
         "direction": "BULLISH",
-        "detail": "15m=BULLISH, 1H=BEARISH"
+        "detail": "15m=NEUTRAL, 1H=BULLISH"
       },
       {
         "name": "Liquidity",
         "weight": 15,
-        "direction": "NEUTRAL",
-        "detail": "15m=NEUTRAL, 5m=NEUTRAL"
+        "direction": "BEARISH",
+        "detail": "15m=BEARISH, 5m=BEARISH"
       },
       {
         "name": "Momentum",
@@ -39,274 +30,92 @@
       {
         "name": "VWAP location",
         "weight": 10,
-        "direction": "BEARISH",
+        "direction": "BULLISH",
         "detail": "15m price vs VWAP"
       },
       {
         "name": "Volume expansion",
         "weight": 7.5,
-        "direction": "NEUTRAL",
-        "detail": "15m volume ratio=1.0984718416314445"
+        "direction": "BULLISH",
+        "detail": "15m volume ratio=2.5154046773256535"
       },
       {
         "name": "Order-book imbalance",
         "weight": 7.5,
-        "direction": "BEARISH",
-        "detail": "15m=ASK_DOMINANT"
+        "direction": "NEUTRAL",
+        "detail": "15m=BALANCED"
       },
       {
         "name": "Open interest",
         "weight": 0,
         "direction": "CONTEXT",
-        "detail": "OI=6292439.350000022; single snapshot is non-directional"
+        "detail": "OI=6322832.020000016; single snapshot is non-directional"
       },
       {
         "name": "Funding",
         "weight": 0,
         "direction": "CONTEXT",
-        "detail": "funding=0.0000390918925962; single snapshot is non-directional"
+        "detail": "funding=0.0000762351983619; single snapshot is non-directional"
       },
       {
         "name": "Volatility",
         "weight": 0,
         "direction": "CONTEXT",
-        "detail": "15m ATR%=0.4769657288414883"
+        "detail": "15m ATR%=0.5352394181433947"
       }
     ],
-    "conflicts": [
-      "15m and 1H structure disagree"
-    ],
+    "conflicts": [],
     "noTradeReasons": [
       "HTF trend is mixed or neutral",
-      "No clear HTF majority",
-      "Cross-timeframe structure conflict"
+      "No clear HTF majority"
     ],
     "alignment": {
       "htf": {
         "1D": "NEUTRAL",
-        "4H": "BEARISH",
-        "1H": "NEUTRAL"
+        "4H": "NEUTRAL",
+        "1H": "BULLISH"
       },
       "execution": {
         "15m": "BULLISH",
         "5m": "BULLISH"
       },
-      "htfBullish": 0,
-      "htfBearish": 1,
+      "htfBullish": 1,
+      "htfBearish": 0,
       "executionBullish": 2,
       "executionBearish": 0
     },
     "setupState": "NO_TRADE",
     "directionBias": "NO_TRADE",
-    "score": 35,
+    "score": 52.5,
     "scoreScale": 100,
     "scoreMeaning": "Evidence score, not a win probability. Thresholds require historical calibration/backtesting.",
     "invalidation": "No directional invalidation until a qualified setup exists."
   },
-  "dataQuality": {
-    "candlesPerTimeframe": {
-      "1m": 300,
-      "5m": 300,
-      "15m": 300,
-      "1H": 300,
-      "4H": 300,
-      "1D": 300
-    },
-    "closedCandlesPerTimeframe": {
-      "1m": 299,
-      "5m": 299,
-      "15m": 299,
-      "1H": 299,
-      "4H": 299,
-      "1D": 299
-    }
-  },
-  "featureSummary": {
-    "1m": {
-      "lastCandle": {
-        "time": 1789606500000,
-        "open": 2419.69,
-        "high": 2419.7,
-        "low": 2419,
-        "close": 2419.25,
-        "volume": 7836.9,
-        "confirmed": true
-      },
-      "indicators": {
-        "ema20": 2421.4254868208945,
-        "ema50": 2420.834959570633,
-        "ema200": 2413.3070707667416,
-        "rsi14": 38.17310578627422,
-        "atr14": 1.5513560134262998,
-        "vwap": 2409.53162815493,
-        "macd": -0.6984365426628756,
-        "macdSignal": -0.27484777058082843,
-        "macdHistogram": -0.42358877208204715,
-        "volumeSma20": 11414.787,
-        "volumeRatio20": 0.686556831940885
-      },
-      "momentum": {
-        "priceChange1": -0.44000000000005457,
-        "priceChangePct1": -0.01818414755609415,
-        "aboveEma20": false,
-        "aboveEma50": false,
-        "aboveEma200": true
-      }
-    },
-    "5m": {
-      "lastCandle": {
-        "time": 1789606200000,
-        "open": 2421.83,
-        "high": 2422.19,
-        "low": 2419.43,
-        "close": 2419.69,
-        "volume": 45530.29,
-        "confirmed": true
-      },
-      "indicators": {
-        "ema20": 2417.396225669165,
-        "ema50": 2410.4703570886286,
-        "ema200": 2403.2829564310027,
-        "rsi14": 57.486235868810226,
-        "atr14": 4.916202966089968,
-        "vwap": 2399.6515141467894,
-        "macd": 4.96431666366334,
-        "macdSignal": 5.307368023644542,
-        "macdHistogram": -0.3430513599812022,
-        "volumeSma20": 78913.50800000002,
-        "volumeRatio20": 0.5769644659568295
-      },
-      "momentum": {
-        "priceChange1": -2.130000000000109,
-        "priceChangePct1": -0.08795038442163781,
-        "aboveEma20": true,
-        "aboveEma50": true,
-        "aboveEma200": true
-      }
-    },
-    "15m": {
-      "lastCandle": {
-        "time": 1789605000000,
-        "open": 2420.94,
-        "high": 2426.69,
-        "low": 2420,
-        "close": 2422.98,
-        "volume": 205907.73,
-        "confirmed": true
-      },
-      "indicators": {
-        "ema20": 2408.6141514695773,
-        "ema50": 2404.1761938622003,
-        "ema200": 2433.2398525956146,
-        "rsi14": 62.72491034648592,
-        "atr14": 11.556784216683493,
-        "vwap": 2452.907625816777,
-        "macd": 5.1861239804970864,
-        "macdSignal": 2.9611009420780476,
-        "macdHistogram": 2.225023038419039,
-        "volumeSma20": 187449.2565,
-        "volumeRatio20": 1.0984718416314445
-      },
-      "momentum": {
-        "priceChange1": 2.0399999999999636,
-        "priceChangePct1": 0.08426478970978064,
-        "aboveEma20": true,
-        "aboveEma50": true,
-        "aboveEma200": false
-      }
-    },
-    "1H": {
-      "lastCandle": {
-        "time": 1789599600000,
-        "open": 2391.12,
-        "high": 2422,
-        "low": 2388.5,
-        "close": 2417.38,
-        "volume": 1064881.49,
-        "confirmed": true
-      },
-      "indicators": {
-        "ema20": 2404.7791039964177,
-        "ema50": 2427.844311451093,
-        "ema200": 2468.532253991837,
-        "rsi14": 53.491190784077205,
-        "atr14": 23.459767036265017,
-        "vwap": 2481.282952062042,
-        "macd": -6.181574379341782,
-        "macdSignal": -10.028867273385586,
-        "macdHistogram": 3.847292894043804,
-        "volumeSma20": 1502879.8394999998,
-        "volumeRatio20": 0.708560632734471
-      },
-      "momentum": {
-        "priceChange1": 26.26000000000022,
-        "priceChangePct1": 1.0982301181036593,
-        "aboveEma20": true,
-        "aboveEma50": false,
-        "aboveEma200": false
-      }
-    },
-    "4H": {
-      "lastCandle": {
-        "time": 1789588800000,
-        "open": 2407.48,
-        "high": 2422,
-        "low": 2386.99,
-        "close": 2417.38,
-        "volume": 2819337.71,
-        "confirmed": true
-      },
-      "indicators": {
-        "ema20": 2445.4722406296046,
-        "ema50": 2467.11920174449,
-        "ema200": 2328.6752203012024,
-        "rsi14": 41.63762297455208,
-        "atr14": 43.31416472098372,
-        "vwap": 2252.833260057459,
-        "macd": -25.8068189133719,
-        "macdSignal": -19.818709824847915,
-        "macdHistogram": -5.988109088523984,
-        "volumeSma20": 5818391.711499998,
-        "volumeRatio20": 0.4845561883411192
-      },
-      "momentum": {
-        "priceChange1": 9.900000000000091,
-        "priceChangePct1": 0.411218369415326,
-        "aboveEma20": false,
-        "aboveEma50": false,
-        "aboveEma200": true
-      }
-    },
-    "1D": {
-      "lastCandle": {
-        "time": 1789488000000,
-        "open": 2423.26,
-        "high": 2447.81,
-        "low": 2356.18,
-        "close": 2391.65,
-        "volume": 33525126.52,
-        "confirmed": true
-      },
-      "indicators": {
-        "ema20": 2434.72552600263,
-        "ema50": 2273.970514086766,
-        "ema200": 2207.300528657736,
-        "rsi14": 49.5826162706017,
-        "atr14": 100.18927126116996,
-        "vwap": 2235.964770880144,
-        "macd": 60.27855252707104,
-        "macdSignal": 87.32181134894923,
-        "macdHistogram": -27.043258821878183,
-        "volumeSma20": 26828163.4405,
-        "volumeRatio20": 1.2496243581619983
-      },
-      "momentum": {
-        "priceChange1": -31.610000000000127,
-        "priceChangePct1": -1.3044411247658165,
-        "aboveEma20": false,
-        "aboveEma50": true,
-        "aboveEma200": true
-      }
-    }
+  "analysis": {
+    "decision": "NO_TRADE",
+    "confidence": 78,
+    "marketRegime": "Mixed higher-timeframe structure with bullish 1H and execution momentum, but neutral 4H/1D structure and bearish short-term liquidity conditions",
+    "summary": "No trade is justified from the closed-candle data. Momentum, VWAP position, volume expansion, and 1H structure support a bullish bias, but the 4H and 1D regimes are neutral, 15m structure is neutral, and liquidity is bearish on both 15m and 5m. The engine also explicitly identifies mixed higher-timeframe structure and no clear HTF majority.",
+    "evidence": [
+      "1H structure is bullish, while 4H and 1D structure are neutral.",
+      "5m and 15m execution momentum is bullish, with price above their EMA20, EMA50, and EMA200.",
+      "15m price is above VWAP at 2445.57, with a bullish MACD histogram of 2.13 and RSI of 65.50.",
+      "15m volume ratio is elevated at 2.52 and 5m volume ratio is 3.15, indicating expansion.",
+      "The confluence engine gives longScore 52.5 versus shortScore 15, but states that the score is evidence rather than a calibrated win probability.",
+      "The supplied setup state and direction bias are both NO_TRADE."
+    ],
+    "conflicts": [
+      "4H and 1D are neutral while only the 1H higher timeframe is bullish; there is no clear higher-timeframe majority.",
+      "15m structure is neutral despite bullish execution momentum.",
+      "Liquidity is bearish on both 15m and 5m, opposing the bullish momentum and volume evidence.",
+      "The latest closed 1m candle closed at 2472.01, below the latest closed 5m and 15m close of 2479.37, showing short-term pullback risk."
+    ],
+    "entryCondition": "No entry condition is active. Reassess only after a new closed-candle setup resolves the higher-timeframe conflict, preferably with confirmed bullish 4H/1D structure and supportive 15m/5m liquidity; do not enter solely on the current long score.",
+    "invalidation": "Not applicable because no directional setup is qualified.",
+    "stopLoss": "Not applicable. Do not define a stop-loss for a trade that has not been entered.",
+    "targets": [
+      "No targets are active while the decision is NO_TRADE."
+    ],
+    "riskNote": "Avoid forcing a long into mixed higher-timeframe structure and bearish liquidity. Funding, open interest, and volatility are single-snapshot context only and do not resolve the contradiction."
   }
 }
