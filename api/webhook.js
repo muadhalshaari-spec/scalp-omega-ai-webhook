@@ -1,21 +1,63 @@
 export default async function handler(req, res) {
   if (req.method === 'GET') {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
     try {
-      const response = await fetch(
-        'https://api.bybit.com/v5/market/kline?category=linear&symbol=ETHUSDT&interval=15&limit=100'
-      );
+      const params = new URLSearchParams({
+        category: 'linear',
+        symbol: 'ETHUSDT',
+        interval: '15',
+        limit: '100'
+      });
 
-      const data = await response.json();
+      const url = `https://api.bybit.com/v5/market/kline?${params.toString()}`;
 
-      if (!response.ok || data.retCode !== 0) {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json'
+        },
+        cache: 'no-store',
+        signal: controller.signal
+      });
+
+      const text = await response.text();
+      let data;
+
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = null;
+      }
+
+      if (!response.ok || !data || data.retCode !== 0) {
+        console.error('Bybit HTTP/API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: text.slice(0, 1000)
+        });
+
         return res.status(502).json({
           ok: false,
           source: 'bybit',
-          error: data.retMsg || 'Bybit request failed'
+          httpStatus: response.status,
+          error: data?.retMsg || `Bybit HTTP ${response.status} ${response.statusText}`,
+          detail: data ? undefined : text.slice(0, 500)
         });
       }
 
-      const candles = data.result.list
+      const list = data?.result?.list;
+
+      if (!Array.isArray(list)) {
+        return res.status(502).json({
+          ok: false,
+          source: 'bybit',
+          error: 'Bybit returned an unexpected response format'
+        });
+      }
+
+      const candles = list
         .reverse()
         .map(candle => ({
           time: Number(candle[0]),
@@ -35,15 +77,19 @@ export default async function handler(req, res) {
         candlesReturned: candles.length,
         candles
       });
-
     } catch (error) {
-      console.error('Bybit error:', error);
+      console.error('Bybit connection error:', error);
 
       return res.status(502).json({
         ok: false,
         source: 'bybit',
-        error: 'Failed to connect to Bybit'
+        error: error?.name === 'AbortError'
+          ? 'Bybit request timed out after 10 seconds'
+          : 'Failed to connect to Bybit',
+        detail: error?.message || String(error)
       });
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
