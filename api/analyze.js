@@ -1,5 +1,3 @@
-import { updateConfluenceResult } from '../lib/confluence-writer.js';
-
 export const maxDuration = 60;
 
 const LIVE_MAX_AGE_MS = 30_000;
@@ -201,23 +199,11 @@ The confidence value is an internal evidence-strength score from 0 to 100, not a
       analysis
     };
 
-    let fileUpdate = null;
-    try {
-      fileUpdate = await updateConfluenceResult(result);
-    } catch (writeError) {
-      fileUpdate = {
-        ok: false,
-        skipped: false,
-        error: writeError?.message || String(writeError)
-      };
-    }
-
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-    return res.status(200).send(JSON.stringify({
-      ...result,
-      fileUpdate
-    }, null, 2));
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
+    return res.status(200).send(JSON.stringify(result, null, 2));
   } catch (error) {
     return res.status(502).json({
       ok: false,
