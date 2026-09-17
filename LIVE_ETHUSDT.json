@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "engine": "SCALP-Ω Live Market Engine v2",
+  "source": "OKX WebSocket",
+  "instrument": "ETH-USDT-SWAP",
+  "realtime": true,
+  "status": "WAITING_FOR_LIVE_STREAM",
+  "updatedAt": null,
+  "ticker": null,
+  "latestTrade": null,
+  "orderBook": null,
+  "candles": {
+    "1m": null,
+    "5m": null,
+    "15m": null,
+    "1H": null,
+    "4H": null,
+    "1D": null
+  }
+}
