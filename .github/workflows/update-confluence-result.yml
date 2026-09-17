@@ -1,0 +1,43 @@
+name: Update SCALP-Ω Confluence Result
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: scalp-omega-confluence-result
+  cancel-in-progress: true
+
+jobs:
+  update-confluence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch latest live SCALP-Ω analysis
+        env:
+          SCALP_OMEGA_URL: https://scalp-omega-ai-webhook.vercel.app/api/public-analysis
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --max-time 180 \
+            -H 'Accept: application/json' \
+            "$SCALP_OMEGA_URL" > CONFLUENCE_RESULT.txt
+          test -s CONFLUENCE_RESULT.txt
+          node -e "const fs=require('fs'); const x=JSON.parse(fs.readFileSync('CONFLUENCE_RESULT.txt','utf8')); if(!x || x.ok !== true) { console.error('SCALP-Ω analysis response was not valid:', x); process.exit(1); }"
+
+      - name: Commit latest result
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- CONFLUENCE_RESULT.txt; then
+            echo 'No change in SCALP-Ω result; nothing to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add CONFLUENCE_RESULT.txt
+          git commit -m 'chore: refresh SCALP-Ω confluence result'
+          git push
