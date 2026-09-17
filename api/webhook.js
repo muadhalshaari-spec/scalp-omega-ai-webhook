@@ -1,73 +1,113 @@
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
-  const tests = [
-    { name: 'okx-swap-ethusdt', source: 'OKX SWAP', url: 'https://www.okx.com/api/v5/market/candles?instId=ETH-USDT-SWAP&bar=15m&limit=100' },
-    { name: 'okx-spot-ethusdt', source: 'OKX Spot', url: 'https://www.okx.com/api/v5/market/candles?instId=ETH-USDT&bar=15m&limit=100' },
-    { name: 'kucoin-spot-ethusdt', source: 'KuCoin Spot', url: 'https://api.kucoin.com/api/v1/market/candles?symbol=ETH-USDT&type=15min' },
-    { name: 'gate-spot-ethusdt', source: 'Gate Spot', url: 'https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=ETH_USDT&interval=15m&limit=100' },
-    { name: 'gate-futures-ticker', source: 'Gate Futures', url: 'https://fx-api.gateio.ws/api/v4/futures/usdt/tickers' }
+  const instId = 'ETH-USDT-SWAP';
+  const bars = [
+    ['1m', 300],
+    ['5m', 300],
+    ['15m', 300],
+    ['1H', 300],
+    ['4H', 300],
+    ['1D', 300]
   ];
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
+  const fetchJson = async url => {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-DataEngine/1.0' },
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch {}
+    if (!response.ok || data?.code !== '0') {
+      throw new Error(`OKX HTTP ${response.status}: ${data?.msg || text.slice(0, 200)}`);
+    }
+    return data;
+  };
+
+  const normalizeCandles = rows => rows
+    .map(c => ({
+      time: Number(c[0]),
+      open: Number(c[1]),
+      high: Number(c[2]),
+      low: Number(c[3]),
+      close: Number(c[4]),
+      volume: Number(c[5]),
+      volumeBase: Number(c[6]),
+      volumeQuote: Number(c[7]),
+      confirmed: c[8] === '1'
+    }))
+    .reverse();
+
   try {
-    const results = await Promise.all(tests.map(async test => {
-      const started = Date.now();
-      try {
-        const response = await fetch(test.url, {
-          method: 'GET',
-          headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-Diagnostic/1.0' },
-          cache: 'no-store',
-          signal: controller.signal
-        });
-        const text = await response.text();
-        let data = null;
-        try { data = JSON.parse(text); } catch {}
+    const candleResults = await Promise.all(
+      bars.map(async ([bar, limit]) => {
+        const data = await fetchJson(
+          `https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=${bar}&limit=${limit}`
+        );
+        return [bar, normalizeCandles(data.data)];
+      })
+    );
 
-        let success = false;
-        let latestCandle = null;
-        let candlesReturned = null;
+    const [tickerData, oiData, fundingData, bookData] = await Promise.all([
+      fetchJson(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`),
+      fetchJson(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${instId}`),
+      fetchJson(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`),
+      fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`)
+    ]);
 
-        if (test.name.startsWith('okx-')) {
-          candlesReturned = Array.isArray(data?.data) ? data.data.length : null;
-          success = response.ok && data?.code === '0' && candlesReturned > 0;
-          if (success) {
-            const c = data.data[0];
-            latestCandle = { time: Number(c[0]), open: Number(c[1]), high: Number(c[2]), low: Number(c[3]), close: Number(c[4]), volume: Number(c[5]) };
-          }
-        } else if (test.name === 'kucoin-spot-ethusdt') {
-          candlesReturned = Array.isArray(data?.data) ? data.data.length : null;
-          success = response.ok && data?.code === '200000' && candlesReturned > 0;
-          if (success) {
-            const c = data.data[0];
-            latestCandle = { time: Number(c[0]) * 1000, open: Number(c[1]), close: Number(c[2]), high: Number(c[3]), low: Number(c[4]), volume: Number(c[5]) };
-          }
-        } else if (test.name === 'gate-spot-ethusdt') {
-          candlesReturned = Array.isArray(data) ? data.length : null;
-          success = response.ok && candlesReturned > 0;
-          if (success) {
-            const c = data[data.length - 1];
-            latestCandle = { time: Number(c[0]) * 1000, volumeQuote: Number(c[1]), close: Number(c[2]), high: Number(c[3]), low: Number(c[4]), open: Number(c[5]), volumeBase: Number(c[6]) };
-          }
-        } else if (test.name === 'gate-futures-ticker') {
-          success = response.ok && Array.isArray(data) && data.length > 0;
-        }
+    const ticker = tickerData.data?.[0] || null;
+    const oi = oiData.data?.[0] || null;
+    const funding = fundingData.data?.[0] || null;
+    const book = bookData.data?.[0] || null;
 
-        return { name: test.name, source: test.source, httpStatus: response.status, statusText: response.statusText, success, candlesReturned, latestCandle, elapsedMs: Date.now() - started, bodyPreview: text.slice(0, 500) };
-      } catch (error) {
-        return { name: test.name, source: test.source, httpStatus: null, statusText: null, success: false, candlesReturned: null, latestCandle: null, elapsedMs: Date.now() - started, error: error?.name === 'AbortError' ? 'Request timed out' : error?.message || String(error) };
-      }
-    }));
+    const orderBook = book ? {
+      time: Number(book.ts),
+      bids: (book.bids || []).map(x => ({ price: Number(x[0]), size: Number(x[1]), orders: Number(x[3] || 0) })),
+      asks: (book.asks || []).map(x => ({ price: Number(x[0]), size: Number(x[1]), orders: Number(x[3] || 0) }))
+    } : null;
 
-    const successful = results.filter(r => r.success);
     return res.status(200).json({
-      ok: successful.length > 0,
-      diagnostic: true,
-      successfulEndpoints: successful.map(r => r.name),
-      tests: results,
-      conclusion: successful.length > 0 ? 'At least one alternative public crypto market-data endpoint is reachable from Vercel.' : 'No tested OKX, KuCoin, or Gate public endpoint returned a successful response from Vercel.'
+      ok: true,
+      source: 'OKX',
+      instrument: instId,
+      marketType: 'USDT perpetual swap',
+      fetchedAt: new Date().toISOString(),
+      ticker: ticker ? {
+        last: Number(ticker.last),
+        bid: Number(ticker.bidPx),
+        ask: Number(ticker.askPx),
+        high24h: Number(ticker.high24h),
+        low24h: Number(ticker.low24h),
+        volume24h: Number(ticker.vol24h),
+        volume24hBase: Number(ticker.volCcy24h),
+        ts: Number(ticker.ts)
+      } : null,
+      openInterest: oi ? {
+        oi: Number(oi.oi),
+        oiCcy: Number(oi.oiCcy),
+        ts: Number(oi.ts)
+      } : null,
+      funding: funding ? {
+        fundingRate: Number(funding.fundingRate),
+        nextFundingRate: funding.nextFundingRate ? Number(funding.nextFundingRate) : null,
+        fundingTime: Number(funding.fundingTime),
+        nextFundingTime: Number(funding.nextFundingTime)
+      } : null,
+      orderBook,
+      candles: Object.fromEntries(candleResults),
+      counts: Object.fromEntries(candleResults.map(([bar, data]) => [bar, data.length]))
+    });
+  } catch (error) {
+    return res.status(502).json({
+      ok: false,
+      source: 'OKX',
+      error: error?.name === 'AbortError' ? 'OKX request timed out after 15 seconds' : error?.message || String(error)
     });
   } finally {
     clearTimeout(timeout);
