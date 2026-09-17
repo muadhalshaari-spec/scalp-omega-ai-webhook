@@ -1,3 +1,5 @@
+export const maxDuration = 60;
+
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
@@ -10,19 +12,28 @@ export default async function handler(req, res) {
 
   const baseUrl = `https://${req.headers.host}`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 45000);
 
   try {
-    // Pull the current deterministic SCALP-Ω confluence result first.
-    const marketResponse = await fetch(`${baseUrl}/api/confluence`, {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-      signal: controller.signal
-    });
+    const [marketResponse, liveResponse] = await Promise.all([
+      fetch(`${baseUrl}/api/confluence`, {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+        signal: controller.signal
+      }),
+      fetch(`${baseUrl}/api/live-snapshot`, {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+        signal: controller.signal
+      })
+    ]);
 
     const marketText = await marketResponse.text();
+    const liveText = await liveResponse.text();
     let marketData = null;
+    let liveData = null;
     try { marketData = JSON.parse(marketText); } catch {}
+    try { liveData = JSON.parse(liveText); } catch {}
 
     if (!marketResponse.ok || !marketData?.ok) {
       return res.status(502).json({
@@ -32,7 +43,14 @@ export default async function handler(req, res) {
       });
     }
 
-    // Send only the compact deterministic analysis to GPT, not the raw candle dump.
+    if (!liveResponse.ok || !liveData?.ok) {
+      return res.status(502).json({
+        ok: false,
+        stage: 'LIVE_MARKET_DATA',
+        error: liveData?.error || liveText.slice(0, 500)
+      });
+    }
+
     const aiInput = {
       engine: marketData.engine,
       source: marketData.source,
@@ -42,21 +60,31 @@ export default async function handler(req, res) {
       market: marketData.market,
       confluence: marketData.confluence,
       dataQuality: marketData.dataQuality,
-      featureSummary: marketData.featureSummary
+      featureSummary: marketData.featureSummary,
+      realtime: {
+        source: liveData.source,
+        receivedAt: liveData.receivedAt,
+        ticker: liveData.ticker,
+        latestTrade: liveData.latestTrade,
+        orderBook: liveData.orderBook,
+        candles: liveData.candles
+      }
     };
 
     const systemPrompt = `You are the reasoning layer of SCALP-Ω, an institutional-style crypto market analysis engine.
 
 Analyze ETH-USDT-SWAP using only the supplied market data. Do not invent missing data. Treat the deterministic confluence engine as evidence, not as truth.
 
+The realtime block is the freshest market snapshot and may contain an in-progress candle. Never treat an in-progress candle as a confirmed closed-candle signal. Use confirmed featureSummary/confluence for non-repainting decisions, while using realtime data to identify current price, order-book pressure, and immediate microstructure.
+
 Your job is to produce a disciplined trading decision:
 - LONG, SHORT, or NO_TRADE.
 - Never force a trade when higher-timeframe structure conflicts with execution structure.
 - A score is evidence, not a probability of winning.
 - Prefer NO_TRADE when evidence is insufficient or contradictory.
-- If LONG or SHORT is justified, define the setup conditions, entry logic, invalidation, stop-loss logic, and target logic from the supplied levels/features. Do not invent an exact price level unless it can be derived from supplied data.
+- If LONG or SHORT is justified, define setup conditions, entry logic, invalidation, stop-loss logic, and target logic only from supplied levels/features. Do not invent an exact price level unless it can be derived from supplied data.
 - Distinguish confirmed facts from conditions that must happen before entry.
-- The system is non-repainting: use closed-candle information only.
+- The system is non-repainting: closed-candle information controls confirmation.
 
 Return strict JSON with exactly these keys:
 {
@@ -127,11 +155,13 @@ The confidence value is an internal evidence-strength score from 0 to 100, not a
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res.status(200).send(JSON.stringify({
       ok: true,
-      engine: 'SCALP-Ω GPT-5.6 Luna Analysis Engine v1',
+      engine: 'SCALP-Ω GPT-5.6 Luna Analysis Engine v2 LIVE',
       model: 'gpt-5.6-luna',
       source: 'OKX',
       instrument: marketData.instrument,
       fetchedAt: marketData.fetchedAt,
+      realtimeReceivedAt: liveData.receivedAt,
+      realtime: liveData,
       deterministicConfluence: marketData.confluence,
       analysis
     }, null, 2));
@@ -139,7 +169,7 @@ The confidence value is an internal evidence-strength score from 0 to 100, not a
     return res.status(502).json({
       ok: false,
       stage: 'ANALYSIS',
-      error: error?.name === 'AbortError' ? 'Analysis request timed out after 30 seconds' : error?.message || String(error)
+      error: error?.name === 'AbortError' ? 'Analysis request timed out after 45 seconds' : error?.message || String(error)
     });
   } finally {
     clearTimeout(timeout);
