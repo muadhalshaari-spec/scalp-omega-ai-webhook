@@ -14,10 +14,11 @@ let okxPublic = null;
 let okxBusiness = null;
 let reconnectTimer = null;
 let heartbeatTimer = null;
+const readyWaiters = new Set();
 
 const state = {
   ok: true,
-  engine: 'SCALP-Ω Live Market Engine v3',
+  engine: 'SCALP-Ω Live Market Engine v4',
   source: 'OKX WebSocket',
   instrument: INST_ID,
   realtime: true,
@@ -33,6 +34,31 @@ const clients = new Set();
 
 function snapshot() {
   return JSON.parse(JSON.stringify(state));
+}
+
+function hasLiveData() {
+  return Boolean(state.ticker || state.latestTrade || state.orderBook || Object.values(state.candles).some(Boolean));
+}
+
+function waitForLiveData(timeoutMs = 2500) {
+  if (hasLiveData()) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const waiter = { resolve, timer: null };
+    waiter.timer = setTimeout(() => {
+      readyWaiters.delete(waiter);
+      resolve(hasLiveData());
+    }, timeoutMs);
+    readyWaiters.add(waiter);
+  });
+}
+
+function resolveReadyWaiters() {
+  if (!hasLiveData()) return;
+  for (const waiter of readyWaiters) {
+    clearTimeout(waiter.timer);
+    waiter.resolve(true);
+  }
+  readyWaiters.clear();
 }
 
 function sendJson(res, payload, status = 200) {
@@ -95,6 +121,7 @@ function connectSocket(url, args, kind) {
       }
 
       state.updatedAt = new Date().toISOString();
+      resolveReadyWaiters();
       broadcast();
     } catch {}
   });
@@ -140,10 +167,11 @@ function connectOKX() {
   }
 }
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
   if (req.method === 'GET' && (url.pathname === '/api/live-stream' || url.pathname === '/api/live-state')) {
+    await waitForLiveData();
     sendJson(res, snapshot());
     return;
   }
