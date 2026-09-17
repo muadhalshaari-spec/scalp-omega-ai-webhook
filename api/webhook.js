@@ -8,28 +8,24 @@ export default async function handler(req, res) {
 
   const tests = [
     {
-      name: 'main-bybit-kline',
-      url: 'https://api.bybit.com/v5/market/kline?category=linear&symbol=ETHUSDT&interval=15&limit=1'
+      name: 'binance-usdm-futures-ethusdt',
+      source: 'Binance USDⓈ-M Futures',
+      url: 'https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=15m&limit=100'
     },
     {
-      name: 'main-bytick-kline',
-      url: 'https://api.bytick.com/v5/market/kline?category=linear&symbol=ETHUSDT&interval=15&limit=1'
+      name: 'binance-spot-ethusdt',
+      source: 'Binance Spot',
+      url: 'https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=15m&limit=100'
     },
     {
-      name: 'main-bybit-server-time',
-      url: 'https://api.bybit.com/v5/market/time'
+      name: 'binance-usdm-server-time',
+      source: 'Binance USDⓈ-M Futures',
+      url: 'https://fapi.binance.com/fapi/v1/time'
     },
     {
-      name: 'main-bytick-server-time',
-      url: 'https://api.bytick.com/v5/market/time'
-    },
-    {
-      name: 'demo-server-time',
-      url: 'https://api-demo.bybit.com/v5/market/time'
-    },
-    {
-      name: 'testnet-server-time',
-      url: 'https://api-testnet.bybit.com/v5/market/time'
+      name: 'binance-spot-server-time',
+      source: 'Binance Spot',
+      url: 'https://api.binance.com/api/v3/time'
     }
   ];
 
@@ -59,26 +55,46 @@ export default async function handler(req, res) {
             data = JSON.parse(text);
           } catch {}
 
+          const isKline = test.name.includes('ethusdt');
+          const success = response.ok && (
+            isKline
+              ? Array.isArray(data) && data.length > 0
+              : typeof data?.serverTime === 'number'
+          );
+
           return {
             name: test.name,
+            source: test.source,
             url: test.url,
             httpStatus: response.status,
             statusText: response.statusText,
-            retCode: data?.retCode ?? null,
-            retMsg: data?.retMsg ?? null,
-            success: response.ok && data?.retCode === 0,
+            success,
+            candlesReturned: isKline && Array.isArray(data) ? data.length : null,
+            serverTime: !isKline ? data?.serverTime ?? null : null,
+            latestCandle: isKline && Array.isArray(data) && data.length > 0
+              ? {
+                  time: Number(data[data.length - 1][0]),
+                  open: Number(data[data.length - 1][1]),
+                  high: Number(data[data.length - 1][2]),
+                  low: Number(data[data.length - 1][3]),
+                  close: Number(data[data.length - 1][4]),
+                  volume: Number(data[data.length - 1][5])
+                }
+              : null,
             elapsedMs: Date.now() - started,
             bodyPreview: text.slice(0, 300)
           };
         } catch (error) {
           return {
             name: test.name,
+            source: test.source,
             url: test.url,
             httpStatus: null,
             statusText: null,
-            retCode: null,
-            retMsg: null,
             success: false,
+            candlesReturned: null,
+            serverTime: null,
+            latestCandle: null,
             elapsedMs: Date.now() - started,
             error: error?.name === 'AbortError'
               ? 'Request timed out'
@@ -92,13 +108,13 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: successful.length > 0,
-      source: 'Bybit',
+      source: 'Binance',
       diagnostic: true,
       successfulEndpoints: successful.map(result => result.name),
       tests: results,
       conclusion: successful.length > 0
-        ? 'At least one Bybit endpoint is reachable from Vercel.'
-        : 'No tested Bybit endpoint returned a successful public response from Vercel.'
+        ? 'At least one Binance public market-data endpoint is reachable from Vercel.'
+        : 'No tested Binance public market-data endpoint returned a successful response from Vercel.'
     });
   } finally {
     clearTimeout(timeout);
