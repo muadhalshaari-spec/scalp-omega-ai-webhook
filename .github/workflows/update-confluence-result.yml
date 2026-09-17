@@ -25,13 +25,21 @@ jobs:
 
       - name: Fetch latest live SCALP-Ω analysis
         env:
-          SCALP_OMEGA_URL: https://scalp-omega-ai-webhook.vercel.app/api/public-analysis
+          SCALP_OMEGA_URL: https://scalp-omega-ai-webhook.vercel.app/api/analyze
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location \
-            --max-time 180 \
-            -H 'Accept: application/json' \
-            "$SCALP_OMEGA_URL" > CONFLUENCE_RESULT.txt
+          response=''
+          for attempt in 1 2 3; do
+            if response=$(curl --fail --silent --show-error --location \
+              --max-time 180 \
+              -H 'Accept: application/json' \
+              "$SCALP_OMEGA_URL?ts=$(date +%s%3N)" 2>/tmp/scalp-curl-error.txt); then
+              printf '%s' "$response" > CONFLUENCE_RESULT.txt
+              break
+            fi
+            cat /tmp/scalp-curl-error.txt >&2 || true
+            if [ "$attempt" -lt 3 ]; then sleep 5; fi
+          done
           test -s CONFLUENCE_RESULT.txt
           node -e "const fs=require('fs'); const x=JSON.parse(fs.readFileSync('CONFLUENCE_RESULT.txt','utf8')); if(!x || x.ok !== true) { console.error('SCALP-Ω analysis response was not valid:', x); process.exit(1); }"
 
