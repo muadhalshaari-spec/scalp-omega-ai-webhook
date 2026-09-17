@@ -1,3 +1,5 @@
+import { updateConfluenceResult } from '../lib/confluence-writer.js';
+
 export const maxDuration = 60;
 
 const LIVE_MAX_AGE_MS = 30_000;
@@ -17,9 +19,6 @@ export default async function handler(req, res) {
   const timeout = setTimeout(() => controller.abort(), 45000);
 
   try {
-    // Fetch deterministic closed-candle confluence and the live WebSocket snapshot
-    // independently. The live snapshot is authoritative for current price and
-    // microstructure; confluence remains authoritative for non-repainting confirmation.
     const [marketResponse, liveResponse] = await Promise.all([
       fetch(`${baseUrl}/api/confluence?ts=${Date.now()}`, {
         headers: { Accept: 'application/json' },
@@ -59,9 +58,6 @@ export default async function handler(req, res) {
     const liveUpdatedAt = Date.parse(liveData.updatedAt || '');
     const liveAgeMs = Number.isFinite(liveUpdatedAt) ? Math.max(0, Date.now() - liveUpdatedAt) : null;
 
-    // Never allow GPT to make a "live" decision from an old WebSocket snapshot.
-    // If the persistent live engine is disconnected or older than the freshness
-    // budget, fail closed instead of returning a misleading stale analysis.
     if (!liveData.connected || liveAgeMs == null || liveAgeMs > LIVE_MAX_AGE_MS) {
       return res.status(503).json({
         ok: false,
@@ -190,9 +186,7 @@ The confidence value is an internal evidence-strength score from 0 to 100, not a
       });
     }
 
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-    return res.status(200).send(JSON.stringify({
+    const result = {
       ok: true,
       engine: 'SCALP-Ω GPT-5.6 Luna Analysis Engine v4 LIVE',
       model: 'gpt-5.6-luna',
@@ -205,6 +199,24 @@ The confidence value is an internal evidence-strength score from 0 to 100, not a
       realtime: liveData,
       deterministicConfluence: marketData.confluence,
       analysis
+    };
+
+    let fileUpdate = null;
+    try {
+      fileUpdate = await updateConfluenceResult(result);
+    } catch (writeError) {
+      fileUpdate = {
+        ok: false,
+        skipped: false,
+        error: writeError?.message || String(writeError)
+      };
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    return res.status(200).send(JSON.stringify({
+      ...result,
+      fileUpdate
     }, null, 2));
   } catch (error) {
     return res.status(502).json({
