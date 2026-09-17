@@ -1,5 +1,7 @@
 export const maxDuration = 60;
 
+const LIVE_MAX_AGE_MS = 30_000;
+
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
@@ -15,13 +17,16 @@ export default async function handler(req, res) {
   const timeout = setTimeout(() => controller.abort(), 45000);
 
   try {
+    // Fetch deterministic closed-candle confluence and the live WebSocket snapshot
+    // independently. The live snapshot is authoritative for current price and
+    // microstructure; confluence remains authoritative for non-repainting confirmation.
     const [marketResponse, liveResponse] = await Promise.all([
-      fetch(`${baseUrl}/api/confluence`, {
+      fetch(`${baseUrl}/api/confluence?ts=${Date.now()}`, {
         headers: { Accept: 'application/json' },
         cache: 'no-store',
         signal: controller.signal
       }),
-      fetch(`${baseUrl}/api/live-state`, {
+      fetch(`${baseUrl}/api/live-state?ts=${Date.now()}`, {
         headers: { Accept: 'application/json' },
         cache: 'no-store',
         signal: controller.signal
@@ -51,13 +56,40 @@ export default async function handler(req, res) {
       });
     }
 
+    const liveUpdatedAt = Date.parse(liveData.updatedAt || '');
+    const liveAgeMs = Number.isFinite(liveUpdatedAt) ? Math.max(0, Date.now() - liveUpdatedAt) : null;
+
+    // Never allow GPT to make a "live" decision from an old WebSocket snapshot.
+    // If the persistent live engine is disconnected or older than the freshness
+    // budget, fail closed instead of returning a misleading stale analysis.
+    if (!liveData.connected || liveAgeMs == null || liveAgeMs > LIVE_MAX_AGE_MS) {
+      return res.status(503).json({
+        ok: false,
+        stage: 'LIVE_MARKET_DATA',
+        error: 'Live market state is stale or disconnected; no live trading decision was generated.',
+        live: {
+          connected: Boolean(liveData.connected),
+          updatedAt: liveData.updatedAt || null,
+          ageMs: liveAgeMs,
+          maxAgeMs: LIVE_MAX_AGE_MS
+        }
+      });
+    }
+
+    const livePrice = liveData.ticker?.last != null ? Number(liveData.ticker.last) : null;
+
     const aiInput = {
       engine: marketData.engine,
       source: marketData.source,
       instrument: marketData.instrument,
       analysisMode: marketData.analysisMode,
       fetchedAt: marketData.fetchedAt,
-      market: marketData.market,
+      market: {
+        ...marketData.market,
+        livePrice,
+        liveStateUpdatedAt: liveData.updatedAt,
+        liveStateAgeMs: liveAgeMs
+      },
       confluence: marketData.confluence,
       dataQuality: marketData.dataQuality,
       featureSummary: marketData.featureSummary,
@@ -76,7 +108,13 @@ export default async function handler(req, res) {
 
 Analyze ETH-USDT-SWAP using only the supplied market data. Do not invent missing data. Treat the deterministic confluence engine as evidence, not as truth.
 
-The realtime block is the freshest market snapshot and may contain an in-progress candle. Never treat an in-progress candle as a confirmed closed-candle signal. Use confirmed featureSummary/confluence for non-repainting decisions, while using realtime data to identify current price, order-book pressure, and immediate microstructure.
+DATA PRIORITY:
+1. realtime.ticker is the freshest current price snapshot.
+2. realtime.latestTrade and realtime.orderBook describe current microstructure.
+3. realtime.candles may contain an in-progress candle and must NOT be used as a confirmed signal.
+4. confluence and featureSummary are closed-candle-only confirmation and are authoritative for non-repainting setup confirmation.
+
+Never report the confluence fetchedAt time as the current market time. The current live timestamp is realtime.receivedAt. The live state has already passed a freshness gate before reaching you.
 
 Your job is to produce a disciplined trading decision:
 - LONG, SHORT, or NO_TRADE.
@@ -153,15 +191,17 @@ The confidence value is an internal evidence-strength score from 0 to 100, not a
     }
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     return res.status(200).send(JSON.stringify({
       ok: true,
-      engine: 'SCALP-Ω GPT-5.6 Luna Analysis Engine v3 LIVE',
+      engine: 'SCALP-Ω GPT-5.6 Luna Analysis Engine v4 LIVE',
       model: 'gpt-5.6-luna',
       source: 'OKX',
       instrument: marketData.instrument,
       fetchedAt: marketData.fetchedAt,
       realtimeReceivedAt: liveData.updatedAt,
+      liveAgeMs,
+      currentPrice: livePrice,
       realtime: liveData,
       deterministicConfluence: marketData.confluence,
       analysis
