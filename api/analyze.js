@@ -21,7 +21,7 @@ export default async function handler(req, res) {
         cache: 'no-store',
         signal: controller.signal
       }),
-      fetch(`${baseUrl}/api/live-snapshot`, {
+      fetch(`${baseUrl}/api/live-state`, {
         headers: { Accept: 'application/json' },
         cache: 'no-store',
         signal: controller.signal
@@ -63,7 +63,8 @@ export default async function handler(req, res) {
       featureSummary: marketData.featureSummary,
       realtime: {
         source: liveData.source,
-        receivedAt: liveData.receivedAt,
+        receivedAt: liveData.updatedAt,
+        connected: liveData.connected,
         ticker: liveData.ticker,
         latestTrade: liveData.latestTrade,
         orderBook: liveData.orderBook,
@@ -155,12 +156,12 @@ The confidence value is an internal evidence-strength score from 0 to 100, not a
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res.status(200).send(JSON.stringify({
       ok: true,
-      engine: 'SCALP-Ω GPT-5.6 Luna Analysis Engine v2 LIVE',
+      engine: 'SCALP-Ω GPT-5.6 Luna Analysis Engine v3 LIVE',
       model: 'gpt-5.6-luna',
       source: 'OKX',
       instrument: marketData.instrument,
       fetchedAt: marketData.fetchedAt,
-      realtimeReceivedAt: liveData.receivedAt,
+      realtimeReceivedAt: liveData.updatedAt,
       realtime: liveData,
       deterministicConfluence: marketData.confluence,
       analysis
