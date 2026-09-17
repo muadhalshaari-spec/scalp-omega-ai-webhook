@@ -1,5 +1,9 @@
-import { createServer } from 'http';
+import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
+
+export const config = {
+  maxDuration: 300
+};
 
 const OKX_PUBLIC_WS = 'wss://ws.okx.com:8443/ws/v5/public';
 const OKX_BUSINESS_WS = 'wss://ws.okx.com:8443/ws/v5/business';
@@ -13,7 +17,7 @@ let heartbeatTimer = null;
 
 const state = {
   ok: true,
-  engine: 'SCALP-Ω Live Market Engine v2',
+  engine: 'SCALP-Ω Live Market Engine v3',
   source: 'OKX WebSocket',
   instrument: INST_ID,
   realtime: true,
@@ -27,10 +31,26 @@ const state = {
 
 const clients = new Set();
 
+function snapshot() {
+  return JSON.parse(JSON.stringify(state));
+}
+
+function sendJson(res, payload, status = 200) {
+  const body = JSON.stringify(payload, null, 2);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    'Pragma': 'no-cache'
+  });
+  res.end(body);
+}
+
 function broadcast() {
-  const payload = JSON.stringify(state);
+  const payload = JSON.stringify(snapshot());
   for (const client of clients) {
-    if (client.readyState === WebSocket.OPEN) client.send(payload);
+    if (client.readyState === WebSocket.OPEN) {
+      try { client.send(payload); } catch {}
+    }
   }
 }
 
@@ -42,13 +62,11 @@ function scheduleReconnect() {
   }, 1500);
 }
 
-function closeSocket(ws) {
-  try { ws?.removeAllListeners(); } catch {}
-  try { ws?.close(); } catch {}
-}
-
 function connectSocket(url, args, kind) {
-  const ws = new WebSocket(url);
+  const ws = new WebSocket(url, {
+    handshakeTimeout: 10000,
+    perMessageDeflate: false
+  });
 
   ws.on('open', () => {
     ws.send(JSON.stringify({ op: 'subscribe', args }));
@@ -61,7 +79,9 @@ function connectSocket(url, args, kind) {
 
   ws.on('message', raw => {
     try {
-      const msg = JSON.parse(raw.toString());
+      const text = raw.toString();
+      if (text === 'pong') return;
+      const msg = JSON.parse(text);
       const channel = msg?.arg?.channel;
       const row = msg?.data?.[msg.data.length - 1];
       if (!channel || !row) return;
@@ -121,24 +141,30 @@ function connectOKX() {
 }
 
 const server = createServer((req, res) => {
-  if (req.url === '/api/live-stream') {
-    res.writeHead(426, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({
-      ok: false,
-      error: 'WebSocket upgrade required',
-      websocket: 'wss://scalp-omega-ai-webhook.vercel.app/api/live-stream'
-    }));
+  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+
+  if (req.method === 'GET' && (url.pathname === '/api/live-stream' || url.pathname === '/api/live-state')) {
+    sendJson(res, snapshot());
     return;
   }
-  res.writeHead(404);
-  res.end();
+
+  sendJson(res, {
+    ok: false,
+    error: 'WebSocket endpoint. Connect using wss://.../api/live-stream or query /api/live-state.'
+  }, 404);
 });
 
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', ws => {
   clients.add(ws);
-  ws.send(JSON.stringify(state));
+  try { ws.send(JSON.stringify(snapshot())); } catch {}
+
+  ws.on('message', raw => {
+    if (raw.toString() === 'ping') {
+      try { ws.send('pong'); } catch {}
+    }
+  });
 
   ws.on('close', () => clients.delete(ws));
   ws.on('error', () => clients.delete(ws));
