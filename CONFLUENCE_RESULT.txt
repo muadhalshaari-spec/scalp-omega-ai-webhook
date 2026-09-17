@@ -1,121 +1,175 @@
 {
   "ok": true,
-  "engine": "SCALP-Ω GPT-5.6 Luna Analysis Engine v1",
-  "model": "gpt-5.6-luna",
-  "source": "OKX",
+  "engine": "SCALP-Ω Live Market Engine v4",
+  "source": "OKX WebSocket",
   "instrument": "ETH-USDT-SWAP",
-  "fetchedAt": "2026-09-17T14:17:19.276Z",
-  "deterministicConfluence": {
-    "longScore": 52.5,
-    "shortScore": 15,
-    "evidence": [
-      {
-        "name": "Structure",
-        "weight": 20,
-        "direction": "BULLISH",
-        "detail": "15m=NEUTRAL, 1H=BULLISH"
-      },
-      {
-        "name": "Liquidity",
-        "weight": 15,
-        "direction": "BEARISH",
-        "detail": "15m=BEARISH, 5m=BEARISH"
-      },
-      {
-        "name": "Momentum",
-        "weight": 15,
-        "direction": "BULLISH",
-        "detail": "15m=BULLISH, 5m=BULLISH"
-      },
-      {
-        "name": "VWAP location",
-        "weight": 10,
-        "direction": "BULLISH",
-        "detail": "15m price vs VWAP"
-      },
-      {
-        "name": "Volume expansion",
-        "weight": 7.5,
-        "direction": "BULLISH",
-        "detail": "15m volume ratio=2.5154046773256535"
-      },
-      {
-        "name": "Order-book imbalance",
-        "weight": 7.5,
-        "direction": "NEUTRAL",
-        "detail": "15m=BALANCED"
-      },
-      {
-        "name": "Open interest",
-        "weight": 0,
-        "direction": "CONTEXT",
-        "detail": "OI=6322832.020000016; single snapshot is non-directional"
-      },
-      {
-        "name": "Funding",
-        "weight": 0,
-        "direction": "CONTEXT",
-        "detail": "funding=0.0000762351983619; single snapshot is non-directional"
-      },
-      {
-        "name": "Volatility",
-        "weight": 0,
-        "direction": "CONTEXT",
-        "detail": "15m ATR%=0.5352394181433947"
-      }
-    ],
-    "conflicts": [],
-    "noTradeReasons": [
-      "HTF trend is mixed or neutral",
-      "No clear HTF majority"
-    ],
-    "alignment": {
-      "htf": {
-        "1D": "NEUTRAL",
-        "4H": "NEUTRAL",
-        "1H": "BULLISH"
-      },
-      "execution": {
-        "15m": "BULLISH",
-        "5m": "BULLISH"
-      },
-      "htfBullish": 1,
-      "htfBearish": 0,
-      "executionBullish": 2,
-      "executionBearish": 0
-    },
-    "setupState": "NO_TRADE",
-    "directionBias": "NO_TRADE",
-    "score": 52.5,
-    "scoreScale": 100,
-    "scoreMeaning": "Evidence score, not a win probability. Thresholds require historical calibration/backtesting.",
-    "invalidation": "No directional invalidation until a qualified setup exists."
+  "realtime": true,
+  "connected": true,
+  "updatedAt": "2026-09-17T15:04:16.835Z",
+  "ticker": {
+    "instType": "SWAP",
+    "instId": "ETH-USDT-SWAP",
+    "last": "2454.49",
+    "lastSz": "1.93",
+    "askPx": "2454.49",
+    "askSz": "1151.02",
+    "bidPx": "2454.48",
+    "bidSz": "1582.51",
+    "open24h": "2390.78",
+    "high24h": "2482.97",
+    "low24h": "2366.01",
+    "sodUtc0": "2417.38",
+    "sodUtc8": "2391.66",
+    "volCcy24h": "3744863.257",
+    "vol24h": "37448632.57",
+    "ts": "1789657456472"
   },
-  "analysis": {
-    "decision": "NO_TRADE",
-    "confidence": 78,
-    "marketRegime": "Mixed higher-timeframe structure with bullish 1H and execution momentum, but neutral 4H/1D structure and bearish short-term liquidity conditions",
-    "summary": "No trade is justified from the closed-candle data. Momentum, VWAP position, volume expansion, and 1H structure support a bullish bias, but the 4H and 1D regimes are neutral, 15m structure is neutral, and liquidity is bearish on both 15m and 5m. The engine also explicitly identifies mixed higher-timeframe structure and no clear HTF majority.",
-    "evidence": [
-      "1H structure is bullish, while 4H and 1D structure are neutral.",
-      "5m and 15m execution momentum is bullish, with price above their EMA20, EMA50, and EMA200.",
-      "15m price is above VWAP at 2445.57, with a bullish MACD histogram of 2.13 and RSI of 65.50.",
-      "15m volume ratio is elevated at 2.52 and 5m volume ratio is 3.15, indicating expansion.",
-      "The confluence engine gives longScore 52.5 versus shortScore 15, but states that the score is evidence rather than a calibrated win probability.",
-      "The supplied setup state and direction bias are both NO_TRADE."
+  "latestTrade": {
+    "instId": "ETH-USDT-SWAP",
+    "tradeId": "4293782342",
+    "px": "2454.63",
+    "sz": "0.01",
+    "side": "buy",
+    "ts": "1789657456681",
+    "count": "1",
+    "source": "0",
+    "seqId": 338470336757
+  },
+  "orderBook": {
+    "asks": [
+      [
+        "2454.64",
+        "219.9",
+        "0",
+        "7"
+      ],
+      [
+        "2454.65",
+        "0.01",
+        "0",
+        "1"
+      ],
+      [
+        "2454.66",
+        "0.02",
+        "0",
+        "2"
+      ],
+      [
+        "2454.67",
+        "0.01",
+        "0",
+        "1"
+      ],
+      [
+        "2454.7",
+        "0.01",
+        "0",
+        "1"
+      ]
     ],
-    "conflicts": [
-      "4H and 1D are neutral while only the 1H higher timeframe is bullish; there is no clear higher-timeframe majority.",
-      "15m structure is neutral despite bullish execution momentum.",
-      "Liquidity is bearish on both 15m and 5m, opposing the bullish momentum and volume evidence.",
-      "The latest closed 1m candle closed at 2472.01, below the latest closed 5m and 15m close of 2479.37, showing short-term pullback risk."
+    "bids": [
+      [
+        "2454.63",
+        "3619.06",
+        "0",
+        "69"
+      ],
+      [
+        "2454.62",
+        "0.01",
+        "0",
+        "1"
+      ],
+      [
+        "2454.6",
+        "9.44",
+        "0",
+        "1"
+      ],
+      [
+        "2454.58",
+        "0.03",
+        "0",
+        "1"
+      ],
+      [
+        "2454.57",
+        "264.72",
+        "0",
+        "2"
+      ]
     ],
-    "entryCondition": "No entry condition is active. Reassess only after a new closed-candle setup resolves the higher-timeframe conflict, preferably with confirmed bullish 4H/1D structure and supportive 15m/5m liquidity; do not enter solely on the current long score.",
-    "invalidation": "Not applicable because no directional setup is qualified.",
-    "stopLoss": "Not applicable. Do not define a stop-loss for a trade that has not been entered.",
-    "targets": [
-      "No targets are active while the decision is NO_TRADE."
+    "instId": "ETH-USDT-SWAP",
+    "ts": "1789657456707",
+    "seqId": 338470337749
+  },
+  "candles": {
+    "1m": [
+      "1789657440000",
+      "2457.05",
+      "2457.05",
+      "2454.46",
+      "2454.49",
+      "5838.25",
+      "583.825",
+      "1433857.67245000",
+      "0"
     ],
-    "riskNote": "Avoid forcing a long into mixed higher-timeframe structure and bearish liquidity. Funding, open interest, and volatility are single-snapshot context only and do not resolve the contradiction."
+    "5m": [
+      "1789657200000",
+      "2460.30",
+      "2460.87",
+      "2452.30",
+      "2454.49",
+      "231114.69",
+      "23111.469",
+      "56754493.47298000",
+      "0"
+    ],
+    "15m": [
+      "1789657200000",
+      "2460.30",
+      "2460.87",
+      "2452.30",
+      "2454.49",
+      "231114.69",
+      "23111.469",
+      "56754493.47298000",
+      "0"
+    ],
+    "1H": [
+      "1789657200000",
+      "2460.30",
+      "2460.87",
+      "2452.30",
+      "2454.49",
+      "231114.69",
+      "23111.469",
+      "56754493.47298000",
+      "0"
+    ],
+    "4H": [
+      "1789646400000",
+      "2441.47",
+      "2482.97",
+      "2431.32",
+      "2454.49",
+      "9426752.92",
+      "942675.292",
+      "2318797659.61635000",
+      "0"
+    ],
+    "1D": [
+      "1789574400000",
+      "2391.66",
+      "2482.97",
+      "2366.01",
+      "2454.49",
+      "36317945.89",
+      "3631794.589",
+      "8805349164.92462000",
+      "0"
+    ]
   }
 }
