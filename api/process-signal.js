@@ -1,4 +1,5 @@
 import { Receiver } from '@upstash/qstash';
+import { insertSignalEvent, supabaseConfigured } from '../lib/supabase.js';
 
 export const maxDuration = 60;
 export const config = { api: { bodyParser: false } };
@@ -41,7 +42,30 @@ export default async function handler(req,res){
     const r=await fetch(`${base}/api/institutional?ts=${Date.now()}`,{headers:{Accept:'application/json'},cache:'no-store'});
     const t=await r.text();let data=null;try{data=JSON.parse(t)}catch{}
     if(!r.ok||!data?.ok)return res.status(502).json({ok:false,error:data?.error||t.slice(0,500)});
-    return res.status(200).json({ok:true,processedAt:new Date().toISOString(),alert:body.alert||body,pipeline:'INSTITUTIONAL_EXECUTION',institutional:data.institutional||null});
+
+    const processedAt=new Date().toISOString();
+    const alert=body.alert||body;
+    let persistence={configured:false};
+    if(supabaseConfigured()){
+      persistence=await insertSignalEvent({
+        job_id: body.jobId || null,
+        source: body.source || 'TRADINGVIEW',
+        alert,
+        institutional: data.institutional||null,
+        status: 'PROCESSED',
+        received_at: body.receivedAt || null,
+        processed_at: processedAt
+      });
+    }
+
+    return res.status(200).json({
+      ok:true,
+      processedAt,
+      alert,
+      pipeline:'INSTITUTIONAL_EXECUTION',
+      institutional:data.institutional||null,
+      persistence
+    });
   }catch(e){
     return res.status(502).json({ok:false,error:e?.message||String(e)});
   }
