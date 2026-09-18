@@ -1,1 +1,0 @@
-import * as m from '../lib/quant-core.js';export default (req,res)=>res.status(200).json({ok:true,exports:Object.keys(m)});
