@@ -61,7 +61,9 @@ async function candles(bar, target = 1000) {
 }
 
 const candlesByTf = Object.fromEntries(
-  await Promise.all(TIMEFRAMES.map(async tf => [tf, await candles(tf)]))
+  await Promise.all(
+    TIMEFRAMES.map(async tf => [tf, await candles(tf, tf === '15m' ? 2000 : 1000)])
+  )
 );
 
 for (const tf of TIMEFRAMES) {
@@ -102,6 +104,7 @@ const result = runInstitutionalBacktest({
 
 assert.ok(Number.isFinite(result.summary.netR), 'backtest netR is not finite');
 assert.ok(result.summary.trades >= 0, 'backtest trade count invalid');
+assert.ok(result.walkForward.windows.length >= 4, 'walk-forward did not produce enough chronological windows');
 assert.equal(result.methodology.lookahead, 'closed candles only');
 assert.equal(
   result.methodology.derivativesAlignment,
