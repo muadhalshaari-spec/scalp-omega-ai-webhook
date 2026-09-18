@@ -31,6 +31,7 @@ const state = {
   latestTrade: null,
   orderBook: null,
   candles: Object.fromEntries(TIMEFRAMES.map(tf => [tf, null])),
+  candleUpdatedAt: Object.fromEntries(TIMEFRAMES.map(tf => [tf, null])),
   channelStatus: {
     ticker: false,
     trades: false,
@@ -46,14 +47,14 @@ function snapshot() {
   return JSON.parse(JSON.stringify(state));
 }
 
-function candleFresh(row) {
-  const ts = Number(row?.[0]);
-  return Number.isFinite(ts) && (Date.now() - ts) <= REQUIRED_CANDLE_AGE_MS;
+function candleFresh(tf) {
+  const ts = Number(state.candleUpdatedAt[tf]);
+  return Number.isFinite(ts) && (Date.now() - ts) <= REQUIRED_CANDLE_AGE_MS && Boolean(state.candles[tf]);
 }
 
 function refreshReadiness() {
   const candleStatus = Object.fromEntries(
-    TIMEFRAMES.map(tf => [tf, Boolean(state.candles[tf] && candleFresh(state.candles[tf]))])
+    TIMEFRAMES.map(tf => [tf, candleFresh(tf)])
   );
 
   state.channelStatus = {
@@ -139,7 +140,10 @@ function resetPublicState() {
 }
 
 function resetCandleState() {
-  for (const tf of TIMEFRAMES) state.candles[tf] = null;
+  for (const tf of TIMEFRAMES) {
+    state.candles[tf] = null;
+    state.candleUpdatedAt[tf] = null;
+  }
 }
 
 function connectSocket(url, args, kind) {
@@ -192,7 +196,10 @@ function connectSocket(url, args, kind) {
       else if (channel === 'books5') state.orderBook = row;
       else if (channel.startsWith('candle')) {
         const tf = channel.slice('candle'.length);
-        if (TIMEFRAMES.includes(tf)) state.candles[tf] = row;
+        if (TIMEFRAMES.includes(tf)) {
+          state.candles[tf] = row;
+          state.candleUpdatedAt[tf] = Date.now();
+        }
       }
 
       state.connected = Boolean(okxPublic && okxBusiness);
