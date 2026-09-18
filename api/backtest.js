@@ -18,8 +18,10 @@ export default async function handler(req, res) {
     return data;
   };
 
+  const paginationTrace = {};
+
   const fetchCandles = async (bar) => {
-    const out=[]; let after=null;
+    const out=[]; let after=null; const trace=[];
     const desired = bar === '15m' ? backtest15mTarget : target;
     const useHistory = bar === '15m';
     const maxPages = bar === '15m' ? Math.ceil(desired / 100) + 2 : 5;
@@ -27,13 +29,15 @@ export default async function handler(req, res) {
       const p=new URLSearchParams({instId,bar,limit: useHistory ? '100' : '300'});
       if(after!=null)p.set('after',String(after));
       const endpoint = useHistory ? 'history-candles' : 'candles';
-      const d=await fetchJson(`https://www.okx.com/api/v5/market/${endpoint}?${p}`);
-      const rows=d.data||[]; if(!rows.length)break;
+      const requestUrl=`https://www.okx.com/api/v5/market/${endpoint}?${p}`;
+      const d=await fetchJson(requestUrl);
+      const rows=d.data||[]; trace.push({page,url:requestUrl,rows:rows.length,firstTs:rows[0]?.[0]??null,lastTs:rows.at(-1)?.[0]??null,previousAfter:after}); if(!rows.length)break;
       out.push(...rows);
       const oldest=Number(rows[rows.length-1][0]);
       if(!Number.isFinite(oldest)||oldest===after)break;
       after=oldest; if(rows.length<300)break;
     }
+    paginationTrace[bar]=trace;
     const unique=new Map(out.map(r=>[String(r[0]),r]));
     return [...unique.values()] .sort((a,b)=>Number(a[0])-Number(b[0])).slice(-desired).map(c=>({
       time:Number(c[0]),open:Number(c[1]),high:Number(c[2]),low:Number(c[3]),close:Number(c[4]),volume:Number(c[5]),confirmed:c[8]==='1'
@@ -50,6 +54,7 @@ export default async function handler(req, res) {
       ok:true,engine:'SCALP-Ω Institutional Backtest Engine v2',source:'OKX',instrument:instId,
       generatedAt:new Date().toISOString(),candlesPerTimeframe:Object.fromEntries(rows.map(([tf,c])=>[tf,c.length])),
       closedCandlesPerTimeframe:Object.fromEntries(rows.map(([tf,c])=>[tf,c.filter(x=>x.confirmed).length])),
+      ...(req.query?.debug==='1'?{paginationTrace}:{}),
       ...result
     },null,2));
   } catch(error) {
