@@ -88,3 +88,7 @@ jobs:
           assert.equal(buildWalkForwardWindows(1200, { trainBars: 800, testBars: 200, step: 200 }).length, 2);
           console.log('SCALP-Omega core smoke test: PASS');
           NODE
+
+      - name: Live OKX integration smoke test
+        run: node scripts/integration-smoke.mjs
+        timeout-minutes: 4
