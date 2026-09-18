@@ -46,6 +46,7 @@ jobs:
           import { buildAdaptiveRisk } from './lib/adaptive-risk-engine.js';
           import { classifyRegime } from './lib/regime-engine.js';
           import { findHistoricalAnalogs } from './lib/historical-analog-engine.js';
+          import { fetchExternalIntelligence } from './lib/external-intelligence.js';
 
           const derivatives = analyzeDerivatives({
             openInterest: { oi: 110 },
@@ -99,6 +100,7 @@ jobs:
           assert.equal(['MARKET','LIMIT','STOP'].includes(plan.entryMode),true);
           assert.equal(plan.targets.length,3);
           assert.equal(findHistoricalAnalogs({trend:'UPTREND'},[]).available,false);
+          assert.equal(typeof fetchExternalIntelligence, 'function');
           console.log('SCALP-Omega core smoke test: PASS');
           NODE
 
