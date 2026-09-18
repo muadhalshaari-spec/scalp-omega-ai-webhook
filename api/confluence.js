@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   const bars = ['1m', '5m', '15m', '1H', '4H', '1D'];
   const CANDLE_TARGET = 1000;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 55_000);
 
   const fetchJson = async (url) => {
     const r = await fetch(url, {
@@ -257,6 +257,15 @@ export default async function handler(req, res) {
       })
     );
 
+    const base15m = candles['15m'] || [];
+    const derivativesData = await fetchDerivativeData({
+      instId,
+      begin: base15m[0]?.time ?? null,
+      end: base15m.at(-1)?.time ?? null,
+      mode: 'live',
+      signal: controller.signal
+    });
+
     const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
 
@@ -339,7 +348,7 @@ export default async function handler(req, res) {
       ok: false,
       source: 'OKX',
       error: error?.name === 'AbortError'
-        ? 'OKX request timed out after 15 seconds'
+        ? 'OKX request timed out after 55 seconds'
         : error?.message || String(error)
     };
 
