@@ -47,6 +47,7 @@ jobs:
           import { classifyRegime } from './lib/regime-engine.js';
           import { findHistoricalAnalogs } from './lib/historical-analog-engine.js';
           import { fetchExternalIntelligence } from './lib/external-intelligence.js';
+          import { normalizeExternalHistory, asOfExternal, alignExternalHistory, externalHistoryQuality } from './lib/external-history-engine.js';
 
           const derivatives = analyzeDerivatives({
             openInterest: { oi: 110 },
@@ -101,6 +102,18 @@ jobs:
           assert.equal(plan.targets.length,3);
           assert.equal(findHistoricalAnalogs({trend:'UPTREND'},[]).available,false);
           assert.equal(typeof fetchExternalIntelligence, 'function');
+          const external = normalizeExternalHistory([
+            { sourceTimestamp: 1000, value: 1 },
+            { sourceTimestamp: 2000, value: 2 },
+            { sourceTimestamp: 3000, value: 3 }
+          ], { provider: 'TEST', metric: 'funding' });
+          assert.equal(asOfExternal(external, 2500).value, 2);
+          assert.equal(asOfExternal(external, 500).value, undefined);
+          const aligned = alignExternalHistory({ funding: external }, [2500, 500]);
+          assert.equal(aligned[0].metrics.funding.lookaheadSafe, true);
+          assert.equal(aligned[0].metrics.funding.value, 2);
+          assert.equal(aligned[1].metrics.funding.status, 'MISSING');
+          assert.equal(externalHistoryQuality({ funding: external }, [2500, 3500]).status, 'COMPLETE');
           console.log('SCALP-Omega core smoke test: PASS');
           NODE
 
