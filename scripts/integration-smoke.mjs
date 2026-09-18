@@ -26,7 +26,7 @@ async function candles(bar, target = 1000) {
   const out = [];
   let after = null;
 
-  for (let page = 0; page < (useHistory ? 6 : 5) && out.length < target; page += 1) {
+  for (let page = 0; page < (useHistory ? Math.ceil(target / 300) + 2 : 5) && out.length < target; page += 1) {
     const q = new URLSearchParams({
       instId: INST_ID,
       bar,
