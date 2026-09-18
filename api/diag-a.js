@@ -1,1 +1,0 @@
-import * as core from '../lib/quant-core.js';import * as data from '../lib/data-intelligence.js';import * as structure from '../lib/market-structure-engine.js';import * as liquidity from '../lib/liquidity-engine.js';export default (req,res)=>res.json({ok:true,modules:Object.keys({core,data,structure,liquidity})});
