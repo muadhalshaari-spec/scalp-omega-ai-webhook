@@ -72,6 +72,9 @@ export default async function handler(req, res) {
 
     const livePrice = liveData.ticker?.last != null ? Number(liveData.ticker.last) : null;
 
+    const institutional = marketData.institutional || null;
+    const deterministicDecision = institutional?.decision || marketData.confluence?.directionBias || 'NO_TRADE';
+
     const aiInput = {
       engine: marketData.engine,
       source: marketData.source,
@@ -85,6 +88,8 @@ export default async function handler(req, res) {
         liveStateAgeMs: liveAgeMs
       },
       confluence: marketData.confluence,
+      institutional,
+      deterministicDecision,
       dataQuality: marketData.dataQuality,
       featureSummary: marketData.featureSummary,
       realtime: {
@@ -100,7 +105,7 @@ export default async function handler(req, res) {
 
     const systemPrompt = `You are the reasoning layer of SCALP-Ω, an institutional-style crypto market analysis engine.
 
-Analyze ETH-USDT-SWAP using only the supplied market data. Do not invent missing data. Treat the deterministic confluence engine as evidence, not as truth.
+Analyze ETH-USDT-SWAP using only the supplied market data. Do not invent missing data. The institutional engine is the deterministic gate; treat its decision and no-trade reasons as hard constraints for the final trading decision.
 
 DATA PRIORITY:
 1. realtime.ticker is the freshest current price snapshot.
@@ -112,6 +117,7 @@ Never report the confluence fetchedAt time as the current market time. The curre
 
 Your job is to produce a disciplined trading decision:
 - LONG, SHORT, or NO_TRADE.
+- The final decision MUST equal deterministicDecision. GPT is the reasoning/explanation layer, not the signal-generator override.
 - Never force a trade when higher-timeframe structure conflicts with execution structure.
 - A score is evidence, not a probability of winning.
 - Prefer NO_TRADE when evidence is insufficient or contradictory.
@@ -196,6 +202,8 @@ The confidence value is an internal evidence-strength score from 0 to 100, not a
       currentPrice: livePrice,
       realtime: liveData,
       deterministicConfluence: marketData.confluence,
+      institutionalDecision: deterministicDecision,
+      institutional,
       analysis
     };
 
