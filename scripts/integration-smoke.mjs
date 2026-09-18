@@ -109,10 +109,10 @@ assert.equal(
 );
 
 const irregularFundingRisk = buildEventRisk({
-  timestamp: 1_000_000,
+  timestamp: 1_800_000,
   funding: {
-    fundingTime: 940_000,
-    nextFundingTime: 1_120_000
+    fundingTime: 0,
+    nextFundingTime: 3_600_000
   }
 });
 assert.equal(irregularFundingRisk.funding.available, true);
