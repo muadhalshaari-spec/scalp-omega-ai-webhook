@@ -2,14 +2,8 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
   const instId = 'ETH-USDT-SWAP';
-  const bars = [
-    ['1m', 300],
-    ['5m', 300],
-    ['15m', 300],
-    ['1H', 300],
-    ['4H', 300],
-    ['1D', 300]
-  ];
+  const bars = ['1m', '5m', '15m', '1H', '4H', '1D'];
+  const CANDLE_TARGET = 1000;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
@@ -28,6 +22,29 @@ export default async function handler(req, res) {
       throw new Error(`OKX HTTP ${response.status}: ${data?.msg || text.slice(0, 200)}`);
     }
     return data;
+  };
+
+  const fetchCandles = async bar => {
+    const out = [];
+    let after = null;
+
+    for (let page = 0; page < 5 && out.length < CANDLE_TARGET; page++) {
+      const params = new URLSearchParams({ instId, bar, limit: '300' });
+      if (after != null) params.set('after', String(after));
+      const data = await fetchJson(`https://www.okx.com/api/v5/market/candles?${params.toString()}`);
+      const rows = data.data || [];
+      if (!rows.length) break;
+      out.push(...rows);
+      const oldest = Number(rows[rows.length - 1][0]);
+      if (!Number.isFinite(oldest) || oldest === after) break;
+      after = oldest;
+      if (rows.length < 300) break;
+    }
+
+    const unique = new Map(out.map(row => [String(row[0]), row]));
+    return [...unique.values()]
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .slice(-CANDLE_TARGET);
   };
 
   const normalizeCandles = rows => rows.map(c => ({
@@ -171,10 +188,9 @@ export default async function handler(req, res) {
   };
 
   try {
-    const candleResults = await Promise.all(bars.map(async ([bar, limit]) => {
-      const data = await fetchJson(`https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=${bar}&limit=${limit}`);
-      return [bar, normalizeCandles(data.data)];
-    }));
+    const candleResults = await Promise.all(
+      bars.map(async bar => [bar, normalizeCandles(await fetchCandles(bar))])
+    );
 
     const [tickerData, oiData, fundingData, bookData] = await Promise.all([
       fetchJson(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`),
