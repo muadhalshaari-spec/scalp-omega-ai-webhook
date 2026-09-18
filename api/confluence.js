@@ -296,6 +296,7 @@ export default async function handler(req, res) {
       market,
       realtime: { orderBook, trades: tradesData.data || [] },
       externalEvents: [],
+      externalIntelligence,
       timestamp: Date.now()
     });
 
