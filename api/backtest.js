@@ -35,7 +35,7 @@ export default async function handler(req, res) {
       out.push(...rows);
       const oldest=Number(rows[rows.length-1][0]);
       if(!Number.isFinite(oldest)||oldest===after)break;
-      after=oldest; if(rows.length<300)break;
+      after=oldest; if(rows.length < (useHistory ? 100 : 300))break;
     }
     paginationTrace[bar]=trace;
     const unique=new Map(out.map(r=>[String(r[0]),r]));
