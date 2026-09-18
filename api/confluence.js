@@ -1,5 +1,6 @@
 import { buildMarketContext } from '../lib/scalp-engine.js';
 import { buildConfluence } from '../lib/confluence-engine.js';
+import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -267,24 +268,13 @@ export default async function handler(req, res) {
     };
 
     const confluence = buildConfluence({ features, contexts, market });
-    let institutional = null;
-    let institutionalError = null;
-    try {
-      const mod = await import('../lib/institutional-engine.js');
-      institutional = mod.buildInstitutionalAnalysis({
-        candlesByTf: candles,
-        market,
-        realtime: { orderBook, trades: tradesData.data || [] },
-        externalEvents: [],
-        timestamp: Date.now()
-      });
-    } catch (e) {
-      institutionalError = {
-        name: e?.name || 'Error',
-        message: e?.message || String(e),
-        stack: e?.stack || null
-      };
-    }
+    const institutional = buildInstitutionalAnalysis({
+      candlesByTf: candles,
+      market,
+      realtime: { orderBook, trades: tradesData.data || [] },
+      externalEvents: [],
+      timestamp: Date.now()
+    });
 
     const newestCandleTs = Object.fromEntries(
       candleResults.map(([bar, data]) => [bar, data.at(-1)?.time ?? null])
@@ -306,7 +296,6 @@ export default async function handler(req, res) {
       market,
       confluence,
       institutional,
-      institutionalError,
       dataQuality: {
         candlesPerTimeframe: Object.fromEntries(
           candleResults.map(([bar, data]) => [bar, data.length])
