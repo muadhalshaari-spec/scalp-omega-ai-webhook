@@ -6,6 +6,7 @@ export default async function handler(req, res) {
   const instId = 'ETH-USDT-SWAP';
   const bars = ['1m','5m','15m','1H','4H','1D'];
   const target = 1000;
+  const backtest15mTarget = 5000;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -19,7 +20,9 @@ export default async function handler(req, res) {
 
   const fetchCandles = async (bar) => {
     const out=[]; let after=null;
-    for(let page=0;page<5 && out.length<target;page++){
+    const desired = bar === '15m' ? backtest15mTarget : target;
+    const maxPages = bar === '15m' ? 18 : 5;
+    for(let page=0;page<maxPages && out.length<desired;page++){
       const p=new URLSearchParams({instId,bar,limit:'300'});
       if(after!=null)p.set('after',String(after));
       const d=await fetchJson(`https://www.okx.com/api/v5/market/candles?${p}`);
@@ -30,7 +33,7 @@ export default async function handler(req, res) {
       after=oldest; if(rows.length<300)break;
     }
     const unique=new Map(out.map(r=>[String(r[0]),r]));
-    return [...unique.values()].sort((a,b)=>Number(a[0])-Number(b[0])).slice(-target).map(c=>({
+    return [...unique.values()] .sort((a,b)=>Number(a[0])-Number(b[0])).slice(-desired).map(c=>({
       time:Number(c[0]),open:Number(c[1]),high:Number(c[2]),low:Number(c[3]),close:Number(c[4]),volume:Number(c[5]),confirmed:c[8]==='1'
     }));
   };
