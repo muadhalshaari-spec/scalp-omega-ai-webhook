@@ -2,6 +2,7 @@ import { buildMarketContext } from '../lib/scalp-engine.js';
 import { buildConfluence } from '../lib/confluence-engine.js';
 import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 import { fetchDerivativeData } from '../lib/derivatives-data.js';
+import { fetchExternalIntelligence } from '../lib/external-intelligence.js';
 
 export const maxDuration = 60;
 
@@ -269,6 +270,8 @@ export default async function handler(req, res) {
     const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
 
+    const externalIntelligence = await fetchExternalIntelligence({ symbol: 'ETHUSDT', signal: controller.signal }).catch(() => ({ ok:false, providers:{}, crossExchange:{agreement:'UNAVAILABLE'} }));
+
     const market = {
       price: ticker ? Number(ticker.last) : null,
       openInterest: derivativesCurrent.openInterest,
@@ -283,7 +286,8 @@ export default async function handler(req, res) {
       takerVolumeHistory: derivativesData.history.takerVolume,
       orderBook,
       trades: tradesData.data || [],
-      instrument: instId
+      instrument: instId,
+      externalIntelligence
     };
 
     const confluence = buildConfluence({ features, contexts, market });
@@ -313,6 +317,7 @@ export default async function handler(req, res) {
       analysisMode: 'CLOSED_CANDLES_ONLY',
       fetchedAt: new Date().toISOString(),
       market,
+      externalIntelligence,
       confluence,
       institutional,
       dataQuality: {
