@@ -1,5 +1,9 @@
 import { buildMarketContext } from '../lib/scalp-engine.js';
 import { buildConfluence } from '../lib/confluence-engine.js';
+import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
+import { fetchDerivativeData } from '../lib/derivatives-data.js';
+
+export const maxDuration = 60;
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -218,11 +222,12 @@ export default async function handler(req, res) {
       bars.map(async (bar) => [bar, normalize(await fetchCandles(bar))])
     );
 
-    const [tickerData, oiData, fundingData, bookData] = await Promise.all([
+    const [tickerData, oiData, fundingData, bookData, tradesData] = await Promise.all([
       fetchJson(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`),
-      fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`)
+      fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`),
+      fetchJson(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`)
     ]);
 
     const book = bookData.data?.[0] || null;
@@ -252,21 +257,34 @@ export default async function handler(req, res) {
       })
     );
 
-    const oi = oiData.data?.[0] || null;
-    const funding = fundingData.data?.[0] || null;
+    const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
 
     const market = {
       price: ticker ? Number(ticker.last) : null,
-      openInterest: oi ? {
-        oi: Number(oi.oi),
-        oiCcy: Number(oi.oiCcy),
-        ts: Number(oi.ts)
-      } : null,
-      fundingRate: funding ? Number(funding.fundingRate) : null
+      openInterest: derivativesCurrent.openInterest,
+      fundingRate: derivativesCurrent.fundingRate,
+      fundingTime: derivativesCurrent.fundingTime,
+      nextFundingTime: derivativesCurrent.nextFundingTime,
+      nextFundingRate: derivativesCurrent.nextFundingRate,
+      settState: derivativesCurrent.settState,
+      oiHistory: derivativesData.history.oi,
+      fundingHistory: derivativesData.history.funding,
+      longShortHistory: derivativesData.history.longShort,
+      takerVolumeHistory: derivativesData.history.takerVolume,
+      orderBook,
+      trades: tradesData.data || [],
+      instrument: instId
     };
 
     const confluence = buildConfluence({ features, contexts, market });
+    const institutional = buildInstitutionalAnalysis({
+      candlesByTf: candles,
+      market,
+      realtime: { orderBook, trades: tradesData.data || [] },
+      externalEvents: [],
+      timestamp: Date.now()
+    });
 
     const newestCandleTs = Object.fromEntries(
       candleResults.map(([bar, data]) => [bar, data.at(-1)?.time ?? null])
@@ -287,6 +305,7 @@ export default async function handler(req, res) {
       fetchedAt: new Date().toISOString(),
       market,
       confluence,
+      institutional,
       dataQuality: {
         candlesPerTimeframe: Object.fromEntries(
           candleResults.map(([bar, data]) => [bar, data.length])
