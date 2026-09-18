@@ -90,6 +90,9 @@ export default async function handler(req, res) {
       confluence: marketData.confluence,
       institutional,
       deterministicDecision,
+      executionPlan: institutional?.executionPlan || null,
+      historicalAnalogs: institutional?.analogs || null,
+      externalIntelligence: marketData.externalIntelligence || marketData.market?.externalIntelligence || null,
       dataQuality: marketData.dataQuality,
       featureSummary: marketData.featureSummary,
       realtime: {
@@ -121,7 +124,8 @@ Your job is to produce a disciplined trading decision:
 - Never force a trade when higher-timeframe structure conflicts with execution structure.
 - A score is evidence, not a probability of winning.
 - Prefer NO_TRADE when evidence is insufficient or contradictory.
-- If LONG or SHORT is justified, define setup conditions, entry logic, invalidation, stop-loss logic, and target logic only from supplied levels/features. Do not invent an exact price level unless it can be derived from supplied data.
+- If LONG or SHORT is justified, audit the supplied executionPlan first. It is deterministic and must not be replaced by invented levels. Explain Market vs Limit vs Stop, entry zone, structural SL, TP1-3, expiry and invalidation only from supplied data.
+- Historical analogs and cross-exchange data are contextual evidence; never treat unavailable providers as confirmed evidence.
 - Distinguish confirmed facts from conditions that must happen before entry.
 - The system is non-repainting: closed-candle information controls confirmation.
 
@@ -140,7 +144,7 @@ Return strict JSON with exactly these keys:
   "riskNote": "string"
 }
 
-The confidence value is an internal evidence-strength score from 0 to 100, not a win probability.`;
+The confidence value is an internal evidence-strength score from 0 to 100, not a win probability. If institutional.probability.probabilityKind is MODEL_ESTIMATE, explicitly state that it is not a validated win probability. Never convert confidence or score into probability.`;
 
     const openaiResponse = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',

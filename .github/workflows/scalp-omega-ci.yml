@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - institutional-23-engine
+      - 'feature/**'
   pull_request:
     branches:
       - main
@@ -41,6 +42,12 @@ jobs:
           import { buildEventRisk } from './lib/event-risk-engine.js';
           import { calibrateProbability } from './lib/calibration-engine.js';
           import { buildWalkForwardWindows } from './lib/walkforward-engine.js';
+          import { buildExecutionPlan } from './lib/execution-plan-engine.js';
+          import { buildAdaptiveRisk } from './lib/adaptive-risk-engine.js';
+          import { classifyRegime } from './lib/regime-engine.js';
+          import { findHistoricalAnalogs } from './lib/historical-analog-engine.js';
+          import { fetchExternalIntelligence } from './lib/external-intelligence.js';
+          import { normalizeExternalHistory, asOfExternal, alignExternalHistory, externalHistoryQuality } from './lib/external-history-engine.js';
 
           const derivatives = analyzeDerivatives({
             openInterest: { oi: 110 },
@@ -86,6 +93,27 @@ jobs:
           assert.equal(calibration.sampleSize, 2);
 
           assert.equal(buildWalkForwardWindows(1200, { trainBars: 800, testBars: 200, step: 200 }).length, 2);
+          const candles=Array.from({length:240},(_,i)=>({open:100+i*.1,high:101+i*.1,low:99+i*.1,close:100+i*.1,volume:1000,confirmed:true}));
+          const regime=classifyRegime(candles); assert.equal(typeof regime.regime,'string');
+          const risk=buildAdaptiveRisk({entry:124,direction:'LONG',atr:1,structure:{protectedLow:122,latestSwingLow:{price:122}},liquidity:{nearestAbove:{price:128}},regime});
+          assert.equal(risk.targets.length,3);
+          const plan=buildExecutionPlan({decision:'LONG',setup:{type:'TREND_PULLBACK',trigger:'FRESH_BULLISH_ZONE_REJECTION'},risk,probability:{probability:.76,uncertainty:.08},marketPrice:124,liquidity:{nearestBelow:{price:122}},regime});
+          assert.equal(['MARKET','LIMIT','STOP'].includes(plan.entryMode),true);
+          assert.equal(plan.targets.length,3);
+          assert.equal(findHistoricalAnalogs({trend:'UPTREND'},[]).available,false);
+          assert.equal(typeof fetchExternalIntelligence, 'function');
+          const external = normalizeExternalHistory([
+            { sourceTimestamp: 1000, value: 1 },
+            { sourceTimestamp: 2000, value: 2 },
+            { sourceTimestamp: 3000, value: 3 }
+          ], { provider: 'TEST', metric: 'funding' });
+          assert.equal(asOfExternal(external, 2500).value, 2);
+          assert.equal(asOfExternal(external, 500), null);
+          const aligned = alignExternalHistory({ funding: external }, [2500, 500]);
+          assert.equal(aligned[0].metrics.funding.lookaheadSafe, true);
+          assert.equal(aligned[0].metrics.funding.value, 2);
+          assert.equal(aligned[1].metrics.funding.status, 'MISSING');
+          assert.equal(externalHistoryQuality({ funding: external }, [2500, 3500]).status, 'COMPLETE');
           console.log('SCALP-Omega core smoke test: PASS');
           NODE
 
