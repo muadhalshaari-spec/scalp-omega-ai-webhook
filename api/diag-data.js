@@ -1,0 +1,1 @@
+import * as m from '../lib/data-intelligence.js';export default (req,res)=>res.status(200).json({ok:true,exports:Object.keys(m)});
