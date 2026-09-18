@@ -1,24 +1,48 @@
-import crypto from 'node:crypto';
+import { Receiver } from '@upstash/qstash';
 
 export const maxDuration = 60;
+export const config = { api: { bodyParser: false } };
 
-function parseBody(req){if(req?.body&&typeof req.body==='object')return req.body;if(typeof req?.body==='string'){try{return JSON.parse(req.body)}catch{}}return{}}
-function verify(req){
+function readRawBody(req){
+  return new Promise((resolve,reject)=>{
+    let data='';
+    req.setEncoding('utf8');
+    req.on('data',chunk=>{data+=chunk;});
+    req.on('end',()=>resolve(data));
+    req.on('error',reject);
+  });
+}
+function verifyLegacy(req){
   const secret=process.env.SIGNAL_PROCESS_SECRET;
-  if(!secret)return true;
+  if(!secret)return false;
   const supplied=String(req.headers?.['x-signal-process-secret']||'');
-  const a=Buffer.from(supplied),b=Buffer.from(secret);
-  return a.length===b.length&&crypto.timingSafeEqual(a,b);
+  return supplied===secret;
 }
 export default async function handler(req,res){
   if(req.method!=='POST')return res.status(405).json({ok:false,error:'Method not allowed'});
-  if(!verify(req))return res.status(401).json({ok:false,error:'Unauthorized'});
-  const body=parseBody(req);
-  const base=`https://${req.headers.host}`;
   try{
+    const rawBody=await readRawBody(req);
+    const signature=String(req.headers?.['upstash-signature']||'');
+    let verified=false;
+    if(signature&&process.env.QSTASH_CURRENT_SIGNING_KEY&&process.env.QSTASH_NEXT_SIGNING_KEY){
+      const receiver=new Receiver({
+        currentSigningKey:process.env.QSTASH_CURRENT_SIGNING_KEY,
+        nextSigningKey:process.env.QSTASH_NEXT_SIGNING_KEY
+      });
+      const base=`https://${req.headers.host}`;
+      verified=await receiver.verify({signature,body:rawBody,url:`${base}/api/process-signal`});
+    } else if(verifyLegacy(req)) {
+      verified=true;
+    }
+    if(!verified)return res.status(401).json({ok:false,error:'Invalid QStash signature'});
+
+    const body=JSON.parse(rawBody||'{}');
+    const base=`https://${req.headers.host}`;
     const r=await fetch(`${base}/api/institutional?ts=${Date.now()}`,{headers:{Accept:'application/json'},cache:'no-store'});
     const t=await r.text();let data=null;try{data=JSON.parse(t)}catch{}
     if(!r.ok||!data?.ok)return res.status(502).json({ok:false,error:data?.error||t.slice(0,500)});
     return res.status(200).json({ok:true,processedAt:new Date().toISOString(),alert:body.alert||body,pipeline:'INSTITUTIONAL_EXECUTION',institutional:data.institutional||null});
-  }catch(e){return res.status(502).json({ok:false,error:e?.message||String(e)})}
+  }catch(e){
+    return res.status(502).json({ok:false,error:e?.message||String(e)});
+  }
 }
