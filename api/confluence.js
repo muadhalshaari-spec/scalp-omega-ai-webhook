@@ -58,6 +58,8 @@ export default async function handler(req, res) {
       .slice(-CANDLE_TARGET);
   };
 
+  // Keep candles in ascending chronological order. The previous reverse()
+  // made featurePack() select the oldest closed candle instead of the latest.
   const normalize = (rows) => rows.map((c) => ({
     time: Number(c[0]),
     open: Number(c[1]),
@@ -68,7 +70,7 @@ export default async function handler(req, res) {
     volumeBase: Number(c[6]),
     volumeQuote: Number(c[7]),
     confirmed: c[8] === '1'
-  })).reverse();
+  }));
 
   const emaSeries = (values, period) => {
     if (values.length < period) return [];
@@ -266,6 +268,16 @@ export default async function handler(req, res) {
 
     const confluence = buildConfluence({ features, contexts, market });
 
+    const newestCandleTs = Object.fromEntries(
+      candleResults.map(([bar, data]) => [bar, data.at(-1)?.time ?? null])
+    );
+    const oldestCandleTs = Object.fromEntries(
+      candleResults.map(([bar, data]) => [bar, data.at(0)?.time ?? null])
+    );
+    const newestClosedCandleTs = Object.fromEntries(
+      candleResults.map(([bar, data]) => [bar, data.filter((c) => c.confirmed).at(-1)?.time ?? null])
+    );
+
     const payload = {
       ok: true,
       engine: 'SCALP-Ω Confluence Engine v1',
@@ -281,6 +293,12 @@ export default async function handler(req, res) {
         ),
         closedCandlesPerTimeframe: Object.fromEntries(
           candleResults.map(([bar, data]) => [bar, data.filter((c) => c.confirmed).length])
+        ),
+        oldestCandleTs,
+        newestCandleTs,
+        newestClosedCandleTs,
+        chronologicalOrder: Object.fromEntries(
+          candleResults.map(([bar, data]) => [bar, (data.length < 2 || data[0].time <= data.at(-1).time)])
         )
       },
       featureSummary: Object.fromEntries(
