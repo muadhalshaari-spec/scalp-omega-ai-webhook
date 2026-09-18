@@ -35,6 +35,29 @@ export default async function handler(req, res) {
     return data;
   };
 
+  const fetchCandles = async (bar) => {
+    const out = [];
+    let after = null;
+
+    for (let page = 0; page < 5 && out.length < CANDLE_TARGET; page++) {
+      const params = new URLSearchParams({ instId, bar, limit: '300' });
+      if (after != null) params.set('after', String(after));
+      const data = await fetchJson(`https://www.okx.com/api/v5/market/candles?${params.toString()}`);
+      const rows = data.data || [];
+      if (!rows.length) break;
+      out.push(...rows);
+      const oldest = Number(rows[rows.length - 1][0]);
+      if (!Number.isFinite(oldest) || oldest === after) break;
+      after = oldest;
+      if (rows.length < 300) break;
+    }
+
+    const unique = new Map(out.map(row => [String(row[0]), row]));
+    return [...unique.values()]
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .slice(-CANDLE_TARGET);
+  };
+
   const normalize = (rows) => rows.map((c) => ({
     time: Number(c[0]),
     open: Number(c[1]),
@@ -190,12 +213,7 @@ export default async function handler(req, res) {
 
   try {
     const candleResults = await Promise.all(
-      bars.map(async (bar) => {
-        const data = await fetchJson(
-          `https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=${bar}&limit=300`
-        );
-        return [bar, normalize(data.data)];
-      })
+      bars.map(async (bar) => [bar, normalize(await fetchCandles(bar))])
     );
 
     const [tickerData, oiData, fundingData, bookData] = await Promise.all([
