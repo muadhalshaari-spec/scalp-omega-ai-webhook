@@ -108,7 +108,7 @@ jobs:
             { sourceTimestamp: 3000, value: 3 }
           ], { provider: 'TEST', metric: 'funding' });
           assert.equal(asOfExternal(external, 2500).value, 2);
-          assert.equal(asOfExternal(external, 500).value, undefined);
+          assert.equal(asOfExternal(external, 500), null);
           const aligned = alignExternalHistory({ funding: external }, [2500, 500]);
           assert.equal(aligned[0].metrics.funding.lookaheadSafe, true);
           assert.equal(aligned[0].metrics.funding.value, 2);
