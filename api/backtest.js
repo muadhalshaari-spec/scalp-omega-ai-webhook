@@ -38,7 +38,7 @@ export default async function handler(req, res) {
       out.push(...rows);
       const oldest=Number(rows[rows.length-1][0]);
       if(!Number.isFinite(oldest)||oldest===after)break;
-      after=oldest; if(rows.length < (useHistory ? 100 : 300))break;
+      after=oldest; if(rows.length < 300)break;
     }
     paginationTrace[bar]=trace;
     const unique=new Map(out.map(r=>[String(r[0]),r]));
@@ -77,6 +77,6 @@ export default async function handler(req, res) {
     },null,2));
   } catch(error) {
     res.setHeader('Cache-Control','no-store');
-    return res.status(502).json({ok:false,error:error?.name==='AbortError'?'OKX request timed out after 15 seconds':error?.message||String(error)});
+    return res.status(502).json({ok:false,error:error?.name==='AbortError'?'OKX request timed out after 55 seconds':error?.message||String(error)});
   } finally { clearTimeout(timeout); }
 }
