@@ -1,0 +1,90 @@
+name: SCALP-Omega CI
+
+on:
+  push:
+    branches:
+      - main
+      - institutional-23-engine
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  static-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+
+      - name: Syntax check
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find api lib -type f -name '*.js' -print0)
+
+      - name: Core module smoke test
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { analyzeDerivatives } from './lib/derivatives-engine.js';
+          import { buildEventRisk } from './lib/event-risk-engine.js';
+          import { calibrateProbability } from './lib/calibration-engine.js';
+          import { buildWalkForwardWindows } from './lib/walkforward-engine.js';
+
+          const derivatives = analyzeDerivatives({
+            openInterest: { oi: 110 },
+            fundingRate: 0.0001,
+            fundingTime: Date.now() - 5 * 60 * 1000,
+            nextFundingTime: Date.now() + 55 * 60 * 1000,
+            oiHistory: [
+              { ts: 1, oi: 100 },
+              { ts: 2, oi: 105 },
+              { ts: 3, oi: 110 }
+            ],
+            fundingHistory: [
+              { ts: 1, fundingRate: 0.00001 },
+              { ts: 2, fundingRate: 0.00002 },
+              { ts: 3, fundingRate: 0.00001 },
+              { ts: 4, fundingRate: 0.00003 },
+              { ts: 5, fundingRate: 0.00002 },
+              { ts: 6, fundingRate: 0.00004 },
+              { ts: 7, fundingRate: 0.00003 },
+              { ts: 8, fundingRate: 0.00005 }
+            ],
+            takerVolumeHistory: [{ ts: 1, buyVol: 12, sellVol: 8 }],
+            longShortHistory: [{ ts: 1, longShortRatio: 1.1 }]
+          });
+          assert.equal(derivatives.available, true);
+          assert.equal(derivatives.openInterest.change, 10);
+
+          const eventRisk = buildEventRisk({
+            timestamp: Date.now(),
+            funding: {
+              fundingTime: Date.now() - 5 * 60 * 1000,
+              nextFundingTime: Date.now() + 55 * 60 * 1000
+            }
+          });
+          assert.equal(eventRisk.riskLevel, 'MEDIUM');
+          assert.equal(eventRisk.flags.includes('FUNDING_WINDOW'), true);
+
+          const calibration = calibrateProbability([
+            { p: 0.6, y: 1 },
+            { p: 0.4, y: 0 }
+          ]);
+          assert.equal(calibration.ready, false);
+          assert.equal(calibration.sampleSize, 2);
+
+          assert.equal(buildWalkForwardWindows(1200, { trainBars: 800, testBars: 200, step: 200 }).length, 2);
+          console.log('SCALP-Omega core smoke test: PASS');
+          NODE
