@@ -219,11 +219,12 @@ export default async function handler(req, res) {
       bars.map(async (bar) => [bar, normalize(await fetchCandles(bar))])
     );
 
-    const [tickerData, oiData, fundingData, bookData] = await Promise.all([
+    const [tickerData, oiData, fundingData, bookData, tradesData] = await Promise.all([
       fetchJson(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`),
-      fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`)
+      fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`),
+      fetchJson(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`)
     ]);
 
     const book = bookData.data?.[0] || null;
@@ -264,7 +265,10 @@ export default async function handler(req, res) {
         oiCcy: Number(oi.oiCcy),
         ts: Number(oi.ts)
       } : null,
-      fundingRate: funding ? Number(funding.fundingRate) : null
+      fundingRate: funding ? Number(funding.fundingRate) : null,
+      orderBook,
+      trades: tradesData.data || [],
+      instrument: instId
     };
 
     const confluence = buildConfluence({ features, contexts, market });
