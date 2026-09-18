@@ -1,6 +1,5 @@
 import { buildMarketContext } from '../lib/scalp-engine.js';
 import { buildConfluence } from '../lib/confluence-engine.js';
-import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -271,7 +270,8 @@ export default async function handler(req, res) {
     let institutional = null;
     let institutionalError = null;
     try {
-      institutional = buildInstitutionalAnalysis({
+      const mod = await import('../lib/institutional-engine.js');
+      institutional = mod.buildInstitutionalAnalysis({
         candlesByTf: candles,
         market,
         realtime: { orderBook, trades: tradesData.data || [] },
