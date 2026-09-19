@@ -4,6 +4,7 @@ import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 import { fetchDerivativeData } from '../lib/derivatives-data.js';
 import { getGlassnodeEthContext } from '../lib/glassnode.js';
 import { getBybitEthContext } from '../lib/bybit.js';
+import { getBinanceEthContext } from '../lib/binance.js';
 
 export const maxDuration = 60;
 
@@ -260,7 +261,7 @@ export default async function handler(req, res) {
     );
 
     const base15m = candles['15m'] || [];
-    const [derivativesData, glassnode, bybit] = await Promise.all([
+    const [derivativesData, glassnode, bybit, binance] = await Promise.all([
       fetchDerivativeData({
       instId,
       begin: base15m[0]?.time ?? null,
@@ -269,7 +270,8 @@ export default async function handler(req, res) {
         signal: controller.signal
       }),
       getGlassnodeEthContext({ asset: 'ETH', interval: '24h', days: 90, signal: controller.signal }),
-      getBybitEthContext({ signal: controller.signal })
+      getBybitEthContext({ signal: controller.signal }),
+      getBinanceEthContext({ signal: controller.signal })
     ]);
 
     const derivativesCurrent = derivativesData.current || {};
@@ -321,6 +323,7 @@ export default async function handler(req, res) {
       market,
       glassnode,
       bybit,
+      binance,
       confluence,
       institutional,
       dataQuality: {
