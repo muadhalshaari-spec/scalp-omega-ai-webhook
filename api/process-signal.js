@@ -1,4 +1,4 @@
-import { Receiver } from '@upstash/qstash';
+import { verifySignature } from '@upstash/qstash/nextjs';
 import { insertSignalEvent, supabaseConfigured } from '../lib/supabase.js';
 
 export const maxDuration = 60;
@@ -19,29 +19,16 @@ function verifyLegacy(req){
   const supplied=String(req.headers?.['x-signal-process-secret']||'');
   return supplied===secret;
 }
-export default async function handler(req,res){
+async function handler(req,res){
+
   let stage='start';
   if(req.method!=='POST')return res.status(405).json({ok:false,error:'Method not allowed'});
   try{
     stage='read_body';
     const rawBody=await readRawBody(req);
-    const signature=String(req.headers?.['upstash-signature']||'');
-    let verified=false;
     stage='verify_qstash';
-    if(signature&&process.env.QSTASH_CURRENT_SIGNING_KEY&&process.env.QSTASH_NEXT_SIGNING_KEY){
-      const receiver=new Receiver({
-        currentSigningKey:process.env.QSTASH_CURRENT_SIGNING_KEY,
-        nextSigningKey:process.env.QSTASH_NEXT_SIGNING_KEY
-      });
-      verified=await receiver.verify({
-        signature,
-        body:rawBody,
-        upstashRegion:req.headers?.['upstash-region']||undefined
-      });
-    } else if(verifyLegacy(req)) {
-      verified=true;
-    }
-    if(!verified)return res.status(401).json({ok:false,error:'Invalid QStash signature'});
+    // Signature verification is handled by the Upstash Next.js verifier wrapper.
+    // The wrapper receives the exact raw body because bodyParser is disabled above.
 
     const body=JSON.parse(rawBody||'{}');
     const base=`https://${req.headers.host}`;
@@ -79,3 +66,5 @@ export default async function handler(req,res){
     return res.status(502).json({ok:false,error:e?.message||String(e),stage});
   }
 }
+
+export default verifySignature(handler);
