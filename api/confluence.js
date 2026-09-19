@@ -2,6 +2,7 @@ import { buildMarketContext } from '../lib/scalp-engine.js';
 import { buildConfluence } from '../lib/confluence-engine.js';
 import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 import { fetchDerivativeData } from '../lib/derivatives-data.js';
+import { getGlassnodeEthContext } from '../lib/glassnode.js';
 
 export const maxDuration = 60;
 
@@ -258,13 +259,16 @@ export default async function handler(req, res) {
     );
 
     const base15m = candles['15m'] || [];
-    const derivativesData = await fetchDerivativeData({
+    const [derivativesData, glassnode] = await Promise.all([
+      fetchDerivativeData({
       instId,
       begin: base15m[0]?.time ?? null,
       end: base15m.at(-1)?.time ?? null,
       mode: 'live',
-      signal: controller.signal
-    });
+        signal: controller.signal
+      }),
+      getGlassnodeEthContext({ asset: 'ETH', interval: '24h', days: 90, signal: controller.signal })
+    ]);
 
     const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
@@ -286,7 +290,7 @@ export default async function handler(req, res) {
       instrument: instId
     };
 
-    const confluence = buildConfluence({ features, contexts, market });
+    const confluence = buildConfluence({ features, contexts, market, glassnode });
     const institutional = buildInstitutionalAnalysis({
       candlesByTf: candles,
       market,
@@ -313,6 +317,7 @@ export default async function handler(req, res) {
       analysisMode: 'CLOSED_CANDLES_ONLY',
       fetchedAt: new Date().toISOString(),
       market,
+      glassnode,
       confluence,
       institutional,
       dataQuality: {
