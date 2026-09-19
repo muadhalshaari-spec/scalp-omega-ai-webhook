@@ -33,8 +33,11 @@ export default async function handler(req,res){
         currentSigningKey:process.env.QSTASH_CURRENT_SIGNING_KEY,
         nextSigningKey:process.env.QSTASH_NEXT_SIGNING_KEY
       });
-      const base=`https://${req.headers.host}`;
-      verified=await receiver.verify({signature,body:rawBody,url:`${base}/api/process-signal`});
+      verified=await receiver.verify({
+        signature,
+        body:rawBody,
+        upstashRegion:req.headers?.['upstash-region']||undefined
+      });
     } else if(verifyLegacy(req)) {
       verified=true;
     }
