@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "node -e \"const fs=require('fs');const p='lib/deribit.js';let s=fs.readFileSync(p,'utf8');s=s.replace('https://www.deribit.com/api/v2','https://test.deribit.com/api/v2');fs.writeFileSync(p,s);fs.mkdirSync('public',{recursive:true});fs.writeFileSync('public/index.html','')\"",
+  "buildCommand": "node -e \"const fs=require('fs');const p='lib/deribit.js';let s=fs.readFileSync(p,'utf8');s=s.replace('https://www.deribit.com/api/v2','https://test.deribit.com/api/v2');fs.writeFileSync(p,s);fs.mkdirSync('public',{recursive:true});fs.writeFileSync('public/index.html','<!doctype html><html><body>SCALP-Ω</body></html>')\"",
   "outputDirectory": "public",
   "functions": {
     "api/live-stream.js": {
