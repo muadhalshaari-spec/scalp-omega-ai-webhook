@@ -288,7 +288,7 @@ export default async function handler(req, res) {
       bars.map(async (bar) => [bar, normalize(await fetchCandles(bar))])
     );
 
-    const [tickerData, oiData, fundingData, bookData, tradesData, binanceKlinesResult, binanceLiquidationsResult] = await Promise.all([
+    const [tickerData, oiData, fundingData, bookData, tradesData, binanceKlinesResult, binanceLiquidationsResult, deribitKlinesResult] = await Promise.all([
       fetchJson(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`),
