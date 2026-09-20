@@ -3,7 +3,8 @@ export const maxDuration = 60;
 const LIVE_MAX_AGE_MS = 30_000;
 
 function compactProvider(p) {
-  return p ? {
+  if (!p) return null;
+  const base = {
     available: p.available === true,
     source: p.source || null,
     timestamp: p.timestamp || null,
@@ -32,7 +33,60 @@ function compactProvider(p) {
       weightedIV: p.options.weightedIV ?? null,
       topExpiries: Array.isArray(p.options.topExpiries) ? p.options.topExpiries.slice(0, 6) : []
     } : null
-  } : null;
+  };
+
+  // Binance is a full market-data source in SCALP-Ω. Keep the complete live/order-flow
+  // and candle payload accessible to the reasoning layer, while the compact view avoids
+  // duplicating OKX data structures.
+  if (p.source === 'Binance' && p.futures) {
+    base.binanceCoverage = p.coverage || null;
+    base.binanceSummary = {
+      futuresPrice: p.price ?? null,
+      spotPrice: p.spotPrice ?? null,
+      futuresSpotBasisPct: p.futuresSpotBasisPct ?? null,
+      adlRisk: p.adlRisk ?? null
+    };
+    base.binanceFutures = {
+      ticker24h: p.futures.ticker24h || null,
+      priceTicker: p.futures.priceTicker || null,
+      priceTickerV2: p.futures.priceTickerV2 || null,
+      bookTicker: p.futures.bookTicker || null,
+      orderBook: p.futures.orderBook ? {
+        metrics: p.futures.orderBook.metrics || null,
+        bids: Array.isArray(p.futures.orderBook.raw?.bids) ? p.futures.orderBook.raw.bids.slice(0, 100) : [],
+        asks: Array.isArray(p.futures.orderBook.raw?.asks) ? p.futures.orderBook.raw.asks.slice(0, 100) : [],
+        rpi: p.futures.orderBook.rpi || null
+      } : null,
+      trades: Array.isArray(p.futures.trades) ? p.futures.trades.slice(0, 500) : [],
+      aggTrades: Array.isArray(p.futures.aggTrades) ? p.futures.aggTrades.slice(0, 500) : [],
+      markAndFunding: p.futures.markAndFunding || null,
+      openInterest: p.futures.openInterest || null,
+      histories: p.futures.histories || {},
+      candles: {
+        klines: p.futures.candles?.klines || {},
+        markPrice: Object.fromEntries(Object.entries(p.futures.candles?.markPrice || {}).map(([k,v]) => [k, Array.isArray(v) ? v.slice(-250) : []])),
+        indexPrice: Object.fromEntries(Object.entries(p.futures.candles?.indexPrice || {}).map(([k,v]) => [k, Array.isArray(v) ? v.slice(-250) : []])),
+        premiumIndex: Object.fromEntries(Object.entries(p.futures.candles?.premiumIndex || {}).map(([k,v]) => [k, Array.isArray(v) ? v.slice(-250) : []])),
+        continuous: Object.fromEntries(Object.entries(p.futures.candles?.continuous || {}).map(([k,v]) => [k, Array.isArray(v) ? v.slice(-250) : []]))
+      },
+      riskAndStructure: p.futures.riskAndStructure || null
+    };
+    base.binanceSpot = {
+      ticker24h: p.spot?.ticker24h || null,
+      priceTicker: p.spot?.priceTicker || null,
+      bookTicker: p.spot?.bookTicker || null,
+      orderBook: p.spot?.orderBook ? {
+        metrics: p.spot.orderBook.metrics || null,
+        bids: Array.isArray(p.spot.orderBook.raw?.bids) ? p.spot.orderBook.raw.bids.slice(0, 100) : [],
+        asks: Array.isArray(p.spot.orderBook.raw?.asks) ? p.spot.orderBook.raw.asks.slice(0, 100) : []
+      } : null,
+      trades: Array.isArray(p.spot?.trades) ? p.spot.trades.slice(0, 500) : [],
+      aggTrades: Array.isArray(p.spot?.aggTrades) ? p.spot.aggTrades.slice(0, 500) : [],
+      candles: Object.fromEntries(Object.entries(p.spot?.candles || {}).map(([k,v]) => [k, Array.isArray(v) ? v.slice(-250) : []]))
+    };
+    base.binanceApiKeyData = p.apiKeyData || null;
+  }
+  return base;
 }
 
 function trimBook(book) {
