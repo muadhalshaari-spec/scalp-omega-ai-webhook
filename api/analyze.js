@@ -1,6 +1,31 @@
 export const maxDuration = 60;
 
 const LIVE_MAX_AGE_MS = 30_000;
+function deterministicFallbackAnalysis({ deterministicDecision, institutional, marketData, livePrice, reason }) {
+  const noTradeReasons = Array.isArray(institutional?.noTradeReasons) ? institutional.noTradeReasons : [];
+  const risk = institutional?.risk || null;
+  const plan = institutional?.executionPlan || null;
+  return {
+    decision: deterministicDecision,
+    confidence: Math.round(Math.max(0, Math.min(1, Number(institutional?.probability?.confidence ?? institutional?.titan?.confidence ?? 0))) * 100),
+    marketRegime: institutional?.regime?.state || institutional?.regime?.regime || 'UNKNOWN',
+    summary: reason ? `Deterministic SCALP-Ω result; GPT audit layer unavailable: ${reason}` : 'Deterministic SCALP-Ω result; GPT audit layer was not used.',
+    evidence: [
+      `deterministicDecision=${deterministicDecision}`,
+      `currentPrice=${livePrice ?? marketData?.market?.price ?? 'UNKNOWN'}`,
+      ...(noTradeReasons.length ? noTradeReasons.map(String) : [])
+    ],
+    conflicts: [],
+    entryCondition: deterministicDecision === 'NO_TRADE'
+      ? 'NO_TRADE: no executable entry condition is authorized.'
+      : String(plan?.entryCondition || plan?.trigger || 'Use only the deterministic execution plan supplied by SCALP-Ω.'),
+    invalidation: String(plan?.invalidation || risk?.invalidation || 'No additional invalidation supplied.'),
+    stopLoss: String(plan?.stopLoss ?? risk?.stopLoss ?? 'No stop supplied because GPT does not invent levels.'),
+    targets: Array.isArray(plan?.targets) ? plan.targets.map(String) : (Array.isArray(risk?.targets) ? risk.targets.map(String) : []),
+    riskNote: 'GPT is an audit/explanation layer only. Rate limiting must never override the deterministic gate.'
+  };
+}
+
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -271,10 +296,40 @@ The confidence value is an internal evidence-strength score from 0 to 100, not a
     try { openaiData = JSON.parse(openaiText); } catch {}
 
     if (!openaiResponse.ok) {
+      const message = openaiData?.error?.message || openaiText.slice(0, 1000);
+      if (openaiResponse.status === 429) {
+        const fallback = deterministicFallbackAnalysis({
+          deterministicDecision,
+          institutional,
+          marketData,
+          livePrice,
+          reason: 'OpenAI rate limit reached'
+        });
+        const result = {
+          ok: true,
+          degraded: true,
+          stage: 'OPENAI_RATE_LIMIT',
+          engine: 'SCALP-Ω Deterministic Analysis Fallback v1',
+          model: 'none',
+          source: 'OKX',
+          instrument: marketData.instrument,
+          fetchedAt: marketData.fetchedAt,
+          realtimeReceivedAt: liveData.updatedAt,
+          liveAgeMs,
+          currentPrice: livePrice,
+          institutionalDecision: deterministicDecision,
+          institutional,
+          analysis: fallback,
+          notice: message
+        };
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        return res.status(200).send(JSON.stringify(result, null, 2));
+      }
       return res.status(502).json({
         ok: false,
         stage: 'OPENAI',
-        error: openaiData?.error?.message || openaiText.slice(0, 1000)
+        error: message
       });
     }
 
