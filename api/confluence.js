@@ -2,9 +2,7 @@ import { buildMarketContext } from '../lib/scalp-engine.js';
 import { buildConfluence } from '../lib/confluence-engine.js';
 import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 import { fetchDerivativeData } from '../lib/derivatives-data.js';
-import { getGlassnodeEthContext } from '../lib/glassnode.js';
-import { getBybitEthContext } from '../lib/bybit.js';
-import { getBinanceEthContext } from '../lib/binance.js';
+import { fetchExternalIntelligence } from '../lib/external-intelligence.js';
 
 export const maxDuration = 60;
 
@@ -261,21 +259,18 @@ export default async function handler(req, res) {
     );
 
     const base15m = candles['15m'] || [];
-    const [derivativesData, glassnode, bybit, binance] = await Promise.all([
-      fetchDerivativeData({
+    const derivativesData = await fetchDerivativeData({
       instId,
       begin: base15m[0]?.time ?? null,
       end: base15m.at(-1)?.time ?? null,
       mode: 'live',
-        signal: controller.signal
-      }),
-      getGlassnodeEthContext({ asset: 'ETH', interval: '24h', days: 90, signal: controller.signal }),
-      getBybitEthContext({ signal: controller.signal }),
-      getBinanceEthContext({ signal: controller.signal })
-    ]);
+      signal: controller.signal
+    });
 
     const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
+
+    const externalIntelligence = await fetchExternalIntelligence({ symbol: 'ETHUSDT', signal: controller.signal }).catch(() => ({ ok:false, providers:{}, crossExchange:{agreement:'UNAVAILABLE'} }));
 
     const market = {
       price: ticker ? Number(ticker.last) : null,
@@ -291,15 +286,17 @@ export default async function handler(req, res) {
       takerVolumeHistory: derivativesData.history.takerVolume,
       orderBook,
       trades: tradesData.data || [],
-      instrument: instId
+      instrument: instId,
+      externalIntelligence
     };
 
-    const confluence = buildConfluence({ features, contexts, market, glassnode, bybit });
+    const confluence = buildConfluence({ features, contexts, market });
     const institutional = buildInstitutionalAnalysis({
       candlesByTf: candles,
       market,
       realtime: { orderBook, trades: tradesData.data || [] },
       externalEvents: [],
+      externalIntelligence,
       timestamp: Date.now()
     });
 
@@ -321,9 +318,7 @@ export default async function handler(req, res) {
       analysisMode: 'CLOSED_CANDLES_ONLY',
       fetchedAt: new Date().toISOString(),
       market,
-      glassnode,
-      bybit,
-      binance,
+      externalIntelligence,
       confluence,
       institutional,
       dataQuality: {

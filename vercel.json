@@ -1,7 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "sed -i 's#https://www.deribit.com/api/v2#https://test.deribit.com/api/v2#' lib/deribit.js; mkdir -p public; echo SCALP-OMEGA > public/index.html",
-  "outputDirectory": "public",
   "functions": {
     "api/live-stream.js": {
       "maxDuration": 300
