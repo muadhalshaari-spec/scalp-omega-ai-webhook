@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { Client } from '@upstash/qstash';
+import { waitUntil } from '@vercel/functions';
 
 export const maxDuration = 10;
 
@@ -21,8 +21,7 @@ export default async function handler(req,res){
   if(req.method==='GET')return res.status(200).json({
     ok:true,service:'SCALP-Ω TradingView Webhook',endpoint:'/api/webhook',
     accepts:['POST'],processor:'/api/process-signal',
-    authentication:process.env.TV_WEBHOOK_SECRET?'configured':'not_configured',
-    queue:'QSTASH'
+    authentication:process.env.TV_WEBHOOK_SECRET?'configured':'not_configured'
   });
   if(req.method!=='POST')return res.status(405).json({ok:false,error:'Method not allowed'});
   const auth=authorized(req);
@@ -33,24 +32,22 @@ export default async function handler(req,res){
   const base=`https://${req.headers.host}`;
   const payload={jobId,alert,receivedAt:new Date().toISOString(),source:'TRADINGVIEW'};
 
-  try{
-    if(!process.env.QSTASH_TOKEN)throw new Error('QSTASH_TOKEN is not configured');
-    const client=new Client({token:process.env.QSTASH_TOKEN});
-    const result=await client.publishJSON({
-      url:`${base}/api/process-signal`,
-      body:payload
-    });
-    return res.status(202).json({
-      ok:true,accepted:true,queued:true,jobId,
-      qstashMessageId:result.messageId||null,
-      receivedAt:payload.receivedAt,
-      webhookAuthenticated:auth.configured,
-      processor:'/api/process-signal',
-      queue:'QSTASH',
-      execution:'asynchronous',
-      message:'Alert accepted by QStash for institutional processing.'
-    });
-  }catch(e){
-    return res.status(502).json({ok:false,accepted:false,queued:false,jobId,error:e?.message||String(e)});
-  }
+  waitUntil((async()=>{
+    try{
+      const headers={'Content-Type':'application/json','Accept':'application/json'};
+      if(process.env.SIGNAL_PROCESS_SECRET)headers['x-signal-process-secret']=process.env.SIGNAL_PROCESS_SECRET;
+      await fetch(`${base}/api/process-signal`,{
+        method:'POST',headers,body:JSON.stringify(payload),cache:'no-store'
+      });
+    }catch{}
+  })());
+
+  return res.status(202).json({
+    ok:true,accepted:true,queued:true,jobId,
+    receivedAt:payload.receivedAt,
+    webhookAuthenticated:auth.configured,
+    processor:'/api/process-signal',
+    execution:'asynchronous',
+    message:'Alert accepted for background institutional processing.'
+  });
 }
