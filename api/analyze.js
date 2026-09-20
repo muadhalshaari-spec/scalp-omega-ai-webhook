@@ -86,6 +86,38 @@ function compactProvider(p) {
     };
     base.binanceApiKeyData = p.apiKeyData || null;
   }
+  if (p.source === 'Bybit' && p.futures) {
+    base.bybitCoverage = p.coverage || null;
+    base.bybitSummary = {
+      linearPrice: p.price ?? null,
+      markPrice: p.markPrice ?? null,
+      indexPrice: p.indexPrice ?? null,
+      spotPrice: p.spotPrice ?? null,
+      basis: p.basis ?? null,
+      basisRate: p.basisRate ?? null
+    };
+    base.bybitFutures = {
+      ticker: p.futures.ticker || null,
+      orderBook: p.futures.orderBook || null,
+      trades: Array.isArray(p.futures.trades) ? p.futures.trades.slice(0, 500) : [],
+      instruments: p.futures.instruments || null,
+      deliveryPrice: p.futures.deliveryPrice || [],
+      riskLimit: p.futures.riskLimit || null,
+      priceLimit: p.futures.priceLimit || null,
+      fundingHistory: p.futures.fundingHistory || [],
+      openInterest: p.futures.openInterest || [],
+      longShort: p.futures.longShort || [],
+      histories: p.futures.histories || {},
+      candles: p.futures.candles || {}
+    };
+    base.bybitSpot = {
+      ticker: p.spot?.ticker || null,
+      orderBook: p.spot?.orderBook || null,
+      trades: Array.isArray(p.spot?.trades) ? p.spot.trades.slice(0, 60) : [],
+      instruments: p.spot?.instruments || null,
+      candles: p.spot?.candles || {}
+    };
+  }
   return base;
 }
 
