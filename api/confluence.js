@@ -65,6 +65,42 @@ export default async function handler(req, res) {
 
   // Keep candles in ascending chronological order. The previous reverse()
   // made featurePack() select the oldest closed candle instead of the latest.
+  const fetchBinanceKlines = async () => {
+    const url = 'https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=15m&limit=500';
+    const r = await fetch(url, {
+      headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-CrossExchange/1.0' },
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    const text = await r.text();
+    const data = JSON.parse(text);
+    if (!r.ok || !Array.isArray(data)) throw new Error('Binance klines unavailable');
+    return data.map((x) => ({
+      timestamp:Number(x[0]), open:Number(x[1]), high:Number(x[2]), low:Number(x[3]),
+      close:Number(x[4]), volume:Number(x[5]), confirmed:Number(x[6])+Number(x[0])<=Date.now()
+    })).filter((x)=>[x.timestamp,x.open,x.high,x.low,x.close].every(Number.isFinite));
+  };
+
+  const fetchBinanceLiquidations = async () => {
+    try {
+      const r = await fetch('https://fapi.binance.com/fapi/v1/allForceOrders?symbol=ETHUSDT&limit=100', {
+        headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-Liquidation/1.0' },
+        cache:'no-store',
+        signal: controller.signal
+      });
+      const text = await r.text();
+      const data = JSON.parse(text);
+      if (!r.ok || !Array.isArray(data)) return [];
+      return data.map((x)=>({
+        timestamp:Number(x.time), price:Number(x.price), size:Number(x.origQty),
+        notional:Number(x.averagePrice||x.price)*Number(x.origQty||0),
+        side:String(x.side||'').toUpperCase(), source:'BINANCE_FORCE_ORDER'
+      })).filter((x)=>Number.isFinite(x.timestamp)&&Number.isFinite(x.price));
+    } catch {
+      return [];
+    }
+  };
+
   const normalize = (rows) => rows.map((c) => ({
     time: Number(c[0]),
     open: Number(c[1]),
@@ -223,12 +259,14 @@ export default async function handler(req, res) {
       bars.map(async (bar) => [bar, normalize(await fetchCandles(bar))])
     );
 
-    const [tickerData, oiData, fundingData, bookData, tradesData] = await Promise.all([
+    const [tickerData, oiData, fundingData, bookData, tradesData, binanceKlinesResult, binanceLiquidationsResult] = await Promise.all([
       fetchJson(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`),
-      fetchJson(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`)
+      fetchJson(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`),
+      Promise.resolve(fetchBinanceKlines()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error})),
+      Promise.resolve(fetchBinanceLiquidations()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error}))
     ]);
 
     const book = bookData.data?.[0] || null;
@@ -286,6 +324,13 @@ export default async function handler(req, res) {
       takerVolumeHistory: derivativesData.history.takerVolume,
       orderBook,
       trades: tradesData.data || [],
+      candlesByExchange: {
+        OKX: candles['15m'] || [],
+        ...(binanceKlinesResult?.ok && Array.isArray(binanceKlinesResult.value) && binanceKlinesResult.value.length
+          ? { BINANCE: binanceKlinesResult.value } : {})
+      },
+      liquidations: binanceLiquidationsResult?.ok ? (binanceLiquidationsResult.value || []) : [],
+      liquidationHistory: binanceLiquidationsResult?.ok ? (binanceLiquidationsResult.value || []) : [],
       instrument: instId,
       externalIntelligence
     };
