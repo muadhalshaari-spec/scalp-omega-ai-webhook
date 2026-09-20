@@ -1,31 +1,111 @@
 export const maxDuration = 60;
 
 const LIVE_MAX_AGE_MS = 30_000;
-function deterministicFallbackAnalysis({ deterministicDecision, institutional, marketData, livePrice, reason }) {
-  const noTradeReasons = Array.isArray(institutional?.noTradeReasons) ? institutional.noTradeReasons : [];
-  const risk = institutional?.risk || null;
-  const plan = institutional?.executionPlan || null;
-  return {
-    decision: deterministicDecision,
-    confidence: Math.round(Math.max(0, Math.min(1, Number(institutional?.probability?.confidence ?? institutional?.titan?.confidence ?? 0))) * 100),
-    marketRegime: institutional?.regime?.state || institutional?.regime?.regime || 'UNKNOWN',
-    summary: reason ? `Deterministic SCALP-Ω result; GPT audit layer unavailable: ${reason}` : 'Deterministic SCALP-Ω result; GPT audit layer was not used.',
-    evidence: [
-      `deterministicDecision=${deterministicDecision}`,
-      `currentPrice=${livePrice ?? marketData?.market?.price ?? 'UNKNOWN'}`,
-      ...(noTradeReasons.length ? noTradeReasons.map(String) : [])
-    ],
-    conflicts: [],
-    entryCondition: deterministicDecision === 'NO_TRADE'
-      ? 'NO_TRADE: no executable entry condition is authorized.'
-      : String(plan?.entryCondition || plan?.trigger || 'Use only the deterministic execution plan supplied by SCALP-Ω.'),
-    invalidation: String(plan?.invalidation || risk?.invalidation || 'No additional invalidation supplied.'),
-    stopLoss: String(plan?.stopLoss ?? risk?.stopLoss ?? 'No stop supplied because GPT does not invent levels.'),
-    targets: Array.isArray(plan?.targets) ? plan.targets.map(String) : (Array.isArray(risk?.targets) ? risk.targets.map(String) : []),
-    riskNote: 'GPT is an audit/explanation layer only. Rate limiting must never override the deterministic gate.'
-  };
+
+function compactProvider(p) {
+  return p ? {
+    available: p.available === true,
+    source: p.source || null,
+    timestamp: p.timestamp || null,
+    price: p.price ?? null,
+    markPrice: p.markPrice ?? null,
+    indexPrice: p.indexPrice ?? null,
+    fundingRate: p.fundingRate ?? p.currentFunding ?? null,
+    nextFundingRate: p.nextFundingRate ?? null,
+    openInterest: p.openInterest ?? null,
+    book: p.book ? {
+      bestBid: p.book.bestBid ?? null,
+      bestAsk: p.book.bestAsk ?? null,
+      mid: p.book.mid ?? null,
+      spread: p.book.spread ?? null,
+      spreadBps: p.book.spreadBps ?? null,
+      bidDepth: p.book.bidDepth ?? null,
+      askDepth: p.book.askDepth ?? null,
+      imbalance: p.book.imbalance ?? null
+    } : null,
+    options: p.options ? {
+      instrumentCount: p.options.instrumentCount ?? null,
+      totalOI: p.options.totalOI ?? null,
+      callOI: p.options.callOI ?? null,
+      putOI: p.options.putOI ?? null,
+      putCallOI: p.options.putCallOI ?? null,
+      weightedIV: p.options.weightedIV ?? null,
+      topExpiries: Array.isArray(p.options.topExpiries) ? p.options.topExpiries.slice(0, 6) : []
+    } : null
+  } : null;
 }
 
+function trimBook(book) {
+  return book ? {
+    time: book.time ?? null,
+    seqId: book.seqId ?? null,
+    bids: Array.isArray(book.bids) ? book.bids.slice(0, 20) : [],
+    asks: Array.isArray(book.asks) ? book.asks.slice(0, 20) : []
+  } : null;
+}
+
+function buildAiInput(dataFeed, liveData) {
+  const externalRaw = dataFeed.externalIntelligence || dataFeed.market?.externalIntelligence || null;
+
+  const compactExternal = externalRaw ? {
+    ok: externalRaw.ok,
+    fetchedAt: externalRaw.fetchedAt,
+    crossExchange: externalRaw.crossExchange,
+    featureSignals: externalRaw.featureSignals,
+    dataQuality: externalRaw.dataQuality,
+    providers: Object.fromEntries(
+      Object.entries(externalRaw.providers || {}).map(([k, v]) => [k, compactProvider(v)])
+    )
+  } : null;
+
+  const market = dataFeed.market || {};
+
+  return {
+    engine: dataFeed.engine,
+    decisionAuthority: dataFeed.decisionAuthority || 'CHATGPT_ONLY',
+    decisionPolicy: dataFeed.decisionPolicy || 'NO_DECISION_OUTPUT',
+    source: dataFeed.source,
+    instrument: dataFeed.instrument,
+    analysisMode: dataFeed.analysisMode,
+    fetchedAt: dataFeed.fetchedAt,
+    market: {
+      price: market.price ?? null,
+      openInterest: market.openInterest ?? null,
+      fundingRate: market.fundingRate ?? null,
+      fundingTime: market.fundingTime ?? null,
+      nextFundingTime: market.nextFundingTime ?? null,
+      nextFundingRate: market.nextFundingRate ?? null,
+      oiHistory: Array.isArray(market.oiHistory) ? market.oiHistory : [],
+      fundingHistory: Array.isArray(market.fundingHistory) ? market.fundingHistory : [],
+      longShortHistory: Array.isArray(market.longShortHistory) ? market.longShortHistory : [],
+      takerVolumeHistory: Array.isArray(market.takerVolumeHistory) ? market.takerVolumeHistory : [],
+      orderBook: trimBook(market.orderBook),
+      trades: Array.isArray(market.trades) ? market.trades.slice(0, 100) : [],
+      candlesByTf: market.candlesByTf || {},
+      candlesByExchange: market.candlesByExchange || {},
+      liquidations: Array.isArray(market.liquidations) ? market.liquidations.slice(0, 200) : [],
+      liquidationHistory: Array.isArray(market.liquidationHistory) ? market.liquidationHistory.slice(0, 200) : []
+    },
+    features: dataFeed.features || {},
+    contexts: dataFeed.contexts || {},
+    externalIntelligence: compactExternal,
+    dataQuality: dataFeed.dataQuality || {},
+    featureSummary: dataFeed.featureSummary || {},
+    realtime: {
+      source: liveData.source || null,
+      receivedAt: liveData.updatedAt || null,
+      connected: liveData.connected === true,
+      ticker: liveData.ticker ? {
+        last: liveData.ticker.last ?? null,
+        bid: liveData.ticker.bid ?? null,
+        ask: liveData.ticker.ask ?? null,
+        markPrice: liveData.ticker.markPrice ?? null
+      } : null,
+      latestTrade: liveData.latestTrade || null,
+      orderBook: trimBook(liveData.orderBook)
+    }
+  };
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -39,11 +119,11 @@ export default async function handler(req, res) {
 
   const baseUrl = `https://${req.headers.host}`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
+  const timeout = setTimeout(() => controller.abort(), 55_000);
 
   try {
-    const [marketResponse, liveResponse] = await Promise.all([
-      fetch(`${baseUrl}/api/confluence?ts=${Date.now()}`, {
+    const [dataResponse, liveResponse] = await Promise.all([
+      fetch(`${baseUrl}/api/institutional?ts=${Date.now()}`, {
         headers: { Accept: 'application/json' },
         cache: 'no-store',
         signal: controller.signal
@@ -55,18 +135,20 @@ export default async function handler(req, res) {
       })
     ]);
 
-    const marketText = await marketResponse.text();
+    const dataText = await dataResponse.text();
     const liveText = await liveResponse.text();
-    let marketData = null;
+
+    let dataFeed = null;
     let liveData = null;
-    try { marketData = JSON.parse(marketText); } catch {}
+
+    try { dataFeed = JSON.parse(dataText); } catch {}
     try { liveData = JSON.parse(liveText); } catch {}
 
-    if (!marketResponse.ok || !marketData?.ok) {
+    if (!dataResponse.ok || !dataFeed?.ok) {
       return res.status(502).json({
         ok: false,
-        stage: 'CONFLUENCE',
-        error: marketData?.error || marketText.slice(0, 500)
+        stage: 'DATA_FEED',
+        error: dataFeed?.error || dataText.slice(0, 500)
       });
     }
 
@@ -79,13 +161,15 @@ export default async function handler(req, res) {
     }
 
     const liveUpdatedAt = Date.parse(liveData.updatedAt || '');
-    const liveAgeMs = Number.isFinite(liveUpdatedAt) ? Math.max(0, Date.now() - liveUpdatedAt) : null;
+    const liveAgeMs = Number.isFinite(liveUpdatedAt)
+      ? Math.max(0, Date.now() - liveUpdatedAt)
+      : null;
 
     if (!liveData.connected || liveAgeMs == null || liveAgeMs > LIVE_MAX_AGE_MS) {
       return res.status(503).json({
         ok: false,
         stage: 'LIVE_MARKET_DATA',
-        error: 'Live market state is stale or disconnected; no live trading decision was generated.',
+        error: 'Live market state is stale or disconnected; no AI trading decision was generated.',
         live: {
           connected: Boolean(liveData.connected),
           updatedAt: liveData.updatedAt || null,
@@ -95,166 +179,39 @@ export default async function handler(req, res) {
       });
     }
 
-    const livePrice = liveData.ticker?.last != null ? Number(liveData.ticker.last) : null;
+    const aiInput = buildAiInput(dataFeed, liveData);
 
-    const institutional = marketData.institutional || null;
-    const deterministicDecision = institutional?.decision || marketData.confluence?.directionBias || 'NO_TRADE';
+    const systemPrompt = `You are the sole trading-decision and reasoning layer for SCALP-Ω.
 
-    const compactProvider = (p) => p ? ({
-      available: p.available === true,
-      source: p.source || null,
-      timestamp: p.timestamp || null,
-      price: p.price ?? null,
-      markPrice: p.markPrice ?? null,
-      indexPrice: p.indexPrice ?? null,
-      fundingRate: p.fundingRate ?? p.currentFunding ?? null,
-      nextFundingRate: p.nextFundingRate ?? null,
-      openInterest: p.openInterest ?? null,
-      book: p.book ? {
-        bestBid: p.book.bestBid ?? null,
-        bestAsk: p.book.bestAsk ?? null,
-        mid: p.book.mid ?? null,
-        spread: p.book.spread ?? null,
-        spreadBps: p.book.spreadBps ?? null,
-        bidDepth: p.book.bidDepth ?? null,
-        askDepth: p.book.askDepth ?? null,
-        imbalance: p.book.imbalance ?? null
-      } : null,
-      options: p.options ? {
-        instrumentCount: p.options.instrumentCount ?? null,
-        totalOI: p.options.totalOI ?? null,
-        callOI: p.options.callOI ?? null,
-        putOI: p.options.putOI ?? null,
-        putCallOI: p.options.putCallOI ?? null,
-        weightedIV: p.options.weightedIV ?? null,
-        topExpiries: Array.isArray(p.options.topExpiries) ? p.options.topExpiries.slice(0, 6) : []
-      } : null
-    }) : null;
+The upstream SCALP-Ω application is DATA-ONLY. It collects, normalizes, and calculates market observations/features, but it does NOT authorize or generate trading decisions for you.
 
-    const compactInstitutional = institutional ? {
-      version: institutional.version,
-      decision: institutional.decision,
-      deterministicDecision: institutional.deterministicDecision,
-      titanDecision: institutional.titanDecision,
-      probability: institutional.probability,
-      setup: institutional.setup,
-      setupCandidates: Array.isArray(institutional.setupCandidates) ? institutional.setupCandidates.slice(0, 3) : [],
-      regime: institutional.regime,
-      structure: institutional.structure,
-      structure1H: institutional.structure1H,
-      liquidity: institutional.liquidity,
-      zones: institutional.zones,
-      sequence: institutional.sequence,
-      micro: institutional.micro,
-      derivatives: institutional.derivatives ? {
-        pressure: institutional.derivatives.pressure,
-        openInterest: institutional.derivatives.openInterest,
-        funding: institutional.derivatives.funding,
-        oi: institutional.derivatives.oi,
-        taker: institutional.derivatives.taker,
-        longShort: institutional.derivatives.longShort
-      } : null,
-      eventRisk: institutional.eventRisk,
-      risk: institutional.risk,
-      executionPlan: institutional.executionPlan,
-      ensemble: institutional.ensemble,
-      meta: institutional.meta,
-      externalIntelligence: institutional.externalIntelligence ? {
-        ok: institutional.externalIntelligence.ok,
-        fetchedAt: institutional.externalIntelligence.fetchedAt,
-        crossExchange: institutional.externalIntelligence.crossExchange,
-        featureSignals: institutional.externalIntelligence.featureSignals,
-        dataQuality: institutional.externalIntelligence.dataQuality,
-        providers: Object.fromEntries(Object.entries(institutional.externalIntelligence.providers || {}).map(([k,v]) => [k, compactProvider(v)]))
-      } : null,
-      titan: institutional.titan ? {
-        engine: institutional.titan.engine,
-        version: institutional.titan.version,
-        decision: institutional.titan.decision,
-        baseDecision: institutional.titan.baseDecision,
-        supportDirection: institutional.titan.supportDirection,
-        blocked: institutional.titan.blocked,
-        blockers: institutional.titan.blockers,
-        score: institutional.titan.score,
-        confidence: institutional.titan.confidence,
-        summary: institutional.titan.summary,
-        traces: Array.isArray(institutional.titan.traces) ? institutional.titan.traces : []
-      } : null
-    } : null;
-
-    const externalRaw = marketData.externalIntelligence || marketData.market?.externalIntelligence || null;
-    const compactExternal = externalRaw ? {
-      ok: externalRaw.ok,
-      fetchedAt: externalRaw.fetchedAt,
-      crossExchange: externalRaw.crossExchange,
-      featureSignals: externalRaw.featureSignals,
-      dataQuality: externalRaw.dataQuality,
-      providers: Object.fromEntries(Object.entries(externalRaw.providers || {}).map(([k,v]) => [k, compactProvider(v)]))
-    } : null;
-
-    const trimBook = (book) => book ? {
-      time: book.time ?? null,
-      bids: Array.isArray(book.bids) ? book.bids.slice(0, 10) : [],
-      asks: Array.isArray(book.asks) ? book.asks.slice(0, 10) : []
-    } : null;
-
-    const aiInput = {
-      engine: marketData.engine,
-      source: marketData.source,
-      instrument: marketData.instrument,
-      analysisMode: marketData.analysisMode,
-      fetchedAt: marketData.fetchedAt,
-      market: {
-        price: marketData.market?.price ?? null,
-        openInterest: marketData.market?.openInterest ?? null,
-        fundingRate: marketData.market?.fundingRate ?? null,
-        fundingTime: marketData.market?.fundingTime ?? null,
-        nextFundingTime: marketData.market?.nextFundingTime ?? null,
-        nextFundingRate: marketData.market?.nextFundingRate ?? null
-      },
-      confluence: marketData.confluence,
-      institutional: compactInstitutional,
-      deterministicDecision,
-      externalIntelligence: compactExternal,
-      dataQuality: marketData.dataQuality,
-      featureSummary: marketData.featureSummary,
-      realtime: {
-        source: liveData.source,
-        receivedAt: liveData.updatedAt,
-        connected: liveData.connected,
-        ticker: liveData.ticker ? {
-          last: liveData.ticker.last ?? null,
-          bid: liveData.ticker.bid ?? null,
-          ask: liveData.ticker.ask ?? null,
-          markPrice: liveData.ticker.markPrice ?? null
-        } : null,
-        latestTrade: liveData.latestTrade || null,
-        orderBook: trimBook(liveData.orderBook)
-      }
-    };
-
-    const systemPrompt = `You are the reasoning layer of SCALP-Ω, an institutional-style crypto market analysis engine.
-
-Analyze ETH-USDT-SWAP using only the supplied market data. Do not invent missing data. The institutional engine is the deterministic gate; treat its decision and no-trade reasons as hard constraints for the final trading decision.
+DECISION AUTHORITY:
+- The final trading decision belongs to you (GPT) only.
+- Do not copy, inherit, obey, or treat any upstream decision/signal/probability/risk gate as authoritative.
+- The upstream feed is evidence only.
+- You may independently conclude LONG, SHORT, or NO_TRADE from the supplied data.
+- Never claim that the SCALP-Ω data engine made the decision.
+- Never convert a model score into a win probability.
+- Do not invent unavailable data.
 
 DATA PRIORITY:
 1. realtime.ticker is the freshest current price snapshot.
 2. realtime.latestTrade and realtime.orderBook describe current microstructure.
-3. realtime.candles may contain an in-progress candle and must NOT be used as a confirmed signal.
-4. confluence and featureSummary are closed-candle-only confirmation and are authoritative for non-repainting setup confirmation.
+3. market.candlesByTf contains historical OHLCV; use confirmed/closed candles for structural confirmation.
+4. features and featureSummary are calculated observations derived from closed candles.
+5. market.candlesByExchange provides cross-exchange context.
+6. derivatives, liquidations, funding, open-interest, taker-volume, and externalIntelligence are contextual evidence and must be checked for freshness/availability.
 
-Never report the confluence fetchedAt time as the current market time. The current live timestamp is realtime.receivedAt. The live state has already passed a freshness gate before reaching you.
-
-Your job is to produce a disciplined trading decision:
-- LONG, SHORT, or NO_TRADE.
-- The final decision MUST equal deterministicDecision. GPT is the reasoning/explanation layer, not the signal-generator override.
-- Never force a trade when higher-timeframe structure conflicts with execution structure.
-- A score is evidence, not a probability of winning.
-- Prefer NO_TRADE when evidence is insufficient or contradictory.
-- If LONG or SHORT is justified, audit the supplied executionPlan first. It is deterministic and must not be replaced by invented levels. Explain Market vs Limit vs Stop, entry zone, structural SL, TP1-3, expiry and invalidation only from supplied data.
-- Historical analogs and cross-exchange data are contextual evidence; never treat unavailable providers as confirmed evidence.
-- Distinguish confirmed facts from conditions that must happen before entry.
-- The system is non-repainting: closed-candle information controls confirmation.
+ANALYSIS STANDARD:
+- Analyze ETH-USDT-SWAP using the entire supplied evidence set.
+- Use 1D, 4H, 1H for regime/context and 15m, 5m, 1m for execution.
+- Inspect structure, trend, liquidity, support/resistance, supply/demand, volatility, momentum, volume, derivatives, order-book imbalance, trade flow, liquidations, and cross-exchange agreement where data exists.
+- Do not use an in-progress candle as confirmed structural evidence.
+- Distinguish facts, conditions, and your own inference.
+- A trade is allowed only when the evidence supports an executable plan; otherwise return NO_TRADE.
+- If LONG or SHORT, give a precise entry method and exact levels only when they are supported by the supplied market structure/data.
+- Use a structural invalidation for the stop. Targets must be consistent with nearby liquidity/structure and current volatility.
+- Never manufacture a level merely to satisfy the requested format.
 
 Return strict JSON with exactly these keys:
 {
@@ -271,7 +228,7 @@ Return strict JSON with exactly these keys:
   "riskNote": "string"
 }
 
-The confidence value is an internal evidence-strength score from 0 to 100, not a win probability. If institutional.probability.probabilityKind is MODEL_ESTIMATE, explicitly state that it is not a validated win probability. Never convert confidence or score into probability.`;
+The confidence value is an evidence-strength score from 0 to 100, NOT a validated probability of profit or win rate.`;
 
     const openaiResponse = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -285,86 +242,62 @@ The confidence value is an internal evidence-strength score from 0 to 100, not a
           { role: 'system', content: systemPrompt },
           { role: 'user', content: JSON.stringify(aiInput) }
         ],
-        max_output_tokens: 1800,
+        max_output_tokens: 2200,
         text: { format: { type: 'json_object' } }
       }),
       signal: controller.signal
     });
 
     const openaiText = await openaiResponse.text();
+
     let openaiData = null;
     try { openaiData = JSON.parse(openaiText); } catch {}
 
     if (!openaiResponse.ok) {
       const message = openaiData?.error?.message || openaiText.slice(0, 1000);
-      if (openaiResponse.status === 429) {
-        const fallback = deterministicFallbackAnalysis({
-          deterministicDecision,
-          institutional,
-          marketData,
-          livePrice,
-          reason: 'OpenAI rate limit reached'
-        });
-        const result = {
-          ok: true,
-          degraded: true,
-          stage: 'OPENAI_RATE_LIMIT',
-          engine: 'SCALP-Ω Deterministic Analysis Fallback v1',
-          model: 'none',
-          source: 'OKX',
-          instrument: marketData.instrument,
-          fetchedAt: marketData.fetchedAt,
-          realtimeReceivedAt: liveData.updatedAt,
-          liveAgeMs,
-          currentPrice: livePrice,
-          institutionalDecision: deterministicDecision,
-          institutional,
-          analysis: fallback,
-          notice: message
-        };
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-        return res.status(200).send(JSON.stringify(result, null, 2));
-      }
-      return res.status(502).json({
+      return res.status(openaiResponse.status === 429 ? 429 : 502).json({
         ok: false,
         stage: 'OPENAI',
-        error: message
+        error: message,
+        decisionGenerated: false
       });
     }
 
-    const outputText = openaiData?.output_text ||
+    const outputText =
+      openaiData?.output_text ||
       openaiData?.output?.flatMap(item => item.content || [])
         ?.map(item => item.text)
         ?.filter(Boolean)
-        ?.join('') || '';
+        ?.join('') ||
+      '';
 
     let analysis = null;
     try { analysis = JSON.parse(outputText); } catch {}
 
-    if (!analysis) {
+    if (!analysis || !['LONG', 'SHORT', 'NO_TRADE'].includes(analysis.decision)) {
       return res.status(502).json({
         ok: false,
         stage: 'OPENAI_PARSE',
-        error: 'OpenAI returned a response that was not valid JSON',
+        error: 'OpenAI returned an invalid trading-decision JSON object',
+        decisionGenerated: false,
         rawOutput: outputText.slice(0, 5000)
       });
     }
 
     const result = {
       ok: true,
-      engine: 'SCALP-Ω GPT-5.6 Luna Analysis Engine v4 LIVE',
+      engine: 'SCALP-Ω GPT-5.6 Luna Decision Layer v1',
       model: 'gpt-5.6-luna',
-      source: 'OKX',
-      instrument: marketData.instrument,
-      fetchedAt: marketData.fetchedAt,
+      decisionAuthority: 'CHATGPT_ONLY',
+      decisionPolicy: 'UPSTREAM_DATA_ONLY_GPT_DECIDES',
+      source: dataFeed.source,
+      instrument: dataFeed.instrument,
+      dataFetchedAt: dataFeed.fetchedAt,
       realtimeReceivedAt: liveData.updatedAt,
       liveAgeMs,
-      currentPrice: livePrice,
+      currentPrice: liveData.ticker?.last != null ? Number(liveData.ticker.last) : null,
+      dataFeed,
       realtime: liveData,
-      deterministicConfluence: marketData.confluence,
-      institutionalDecision: deterministicDecision,
-      institutional,
       analysis
     };
 
@@ -372,12 +305,16 @@ The confidence value is an internal evidence-strength score from 0 to 100, not a
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     res.setHeader('CDN-Cache-Control', 'no-store');
     res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
+
     return res.status(200).send(JSON.stringify(result, null, 2));
   } catch (error) {
     return res.status(502).json({
       ok: false,
       stage: 'ANALYSIS',
-      error: error?.name === 'AbortError' ? 'Analysis request timed out after 45 seconds' : error?.message || String(error)
+      error: error?.name === 'AbortError'
+        ? 'AI analysis request timed out after 55 seconds'
+        : error?.message || String(error),
+      decisionGenerated: false
     });
   } finally {
     clearTimeout(timeout);
