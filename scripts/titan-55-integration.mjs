@@ -7,7 +7,15 @@ const px=candles15m.at(-1).close;
 const bids=Array.from({length:20},(_,i)=>[px-0.5-i*0.5,100-i*2]),asks=Array.from({length:20},(_,i)=>[px+0.5+i*0.5,98-i*2]);
 const trades=Array.from({length:250},(_,i)=>({timestamp:T-60000+i*200,price:px+(i%9-4)*.3,size:5+(i%7),side:i%2?"buy":"sell"}));
 const derivatives={oiHistory:Array.from({length:40},(_,i)=>({timestamp:T-3600000+i*90000,oi:100000+i*50})),fundingHistory:Array.from({length:40},(_,i)=>({timestamp:T-3600000+i*90000,fundingRate:0.0001+(i%5)*.00001})),oiSignal:.55};
-const optionExpiries=["25SEP26","30OCT26","27NOV26","25DEC26"]; const options={options:Array.from({length:48},(_,i)=>{const expiry=optionExpiries[i%optionExpiries.length],strike=Math.round(px+(i%24-12)*25),side:i%2?"P":"C";return{instrument:`ETH-${expiry}-${strike}-${side}`,strike,openInterest:1000+i*20,markIv:.52+(i%12)*.004}}),iv:Array.from({length:24},(_,i)=>.52+i*.003),skew:[],expiries:optionExpiries,strikes:Array.from({length:48},(_,i)=>({instrument:`ETH-${optionExpiries[i%optionExpiries.length]}-${Math.round(px+(i%24-12)*25)}-${i%2?"P":"C"}`,strike:Math.round(px+(i%24-12)*25),openInterest:1000+i*20,markIv:.52+(i%12)*.004}))};
+const optionExpiries=["25SEP26","30OCT26","27NOV26","25DEC26"];
+const makeOption=(i)=>{
+  const expiry=optionExpiries[i%optionExpiries.length];
+  const strike=Math.round(px+(i%24-12)*25);
+  const side=i%2?"P":"C";
+  return {instrument:`ETH-${expiry}-${strike}-${side}`,strike,openInterest:1000+i*20,markIv:.52+(i%12)*.004};
+};
+const optionRows=Array.from({length:48},(_,i)=>makeOption(i));
+const options={options:optionRows,iv:Array.from({length:24},(_,i)=>.52+i*.003),skew:[],expiries:optionExpiries,strikes:optionRows};
 const liquidations=Array.from({length:50},(_,i)=>({timestamp:T-1800000+i*30000,price:px+(i%10-5)*2,notional:1000+i*50,side:i%2?"LONG":"SHORT"}));
 const featureRows=Array.from({length:120},(_,i)=>({rsi:45+(i%20),volumeRatio:.8+(i%7)*.08,trend:(i%9-4)/10,atr:.02+i%5*.001}));
 const outcomes=featureRows.map((x,i)=>({timestamp:T-120*900000+i*900000,y:i%3?0:1}));
