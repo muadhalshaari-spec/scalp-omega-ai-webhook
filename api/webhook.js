@@ -35,6 +35,7 @@ export default async function handler(req,res){
   const qstashToken=process.env.QSTASH_TOKEN;
   const qstashDestination=process.env.QSTASH_DESTINATION_URL || `https://${req.headers.host}/api/process-signal`;
   if(qstashToken){
+    if(!process.env.SIGNAL_PROCESS_SECRET)return res.status(503).json({ok:false,error:'QStash is configured but SIGNAL_PROCESS_SECRET is missing'});
     try{
       const qstashHeaders={
         Authorization:`Bearer ${qstashToken}`,
