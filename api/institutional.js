@@ -1,1 +1,12 @@
-export default async function handler(req,res){if(req.method!=='GET')return res.status(405).json({ok:false,error:'Method not allowed'});const base=typeof req.headers.host==='string'?`https://${req.headers.host}`:'https://scalp-omega-ai-webhook.vercel.app';try{const r=await fetch(`${base}/api/confluence?institutional=1&ts=${Date.now()}`,{cache:'no-store',headers:{Accept:'application/json'}});const text=await r.text();let data;try{data=JSON.parse(text)}catch{data=null}if(!r.ok||!data?.ok)return res.status(502).json({ok:false,error:data?.error||text.slice(0,500)});return res.status(200).json({ok:true,engine:'SCALP-Ω Institutional Intelligence API v2',source:data.source,instrument:data.instrument,fetchedAt:data.fetchedAt,institutional:data.institutional,dataQuality:data.dataQuality})}catch(e){return res.status(502).json({ok:false,error:e?.message||String(e)})}}
+export default async function handler(req,res){
+  if(req.method!=='GET')return res.status(405).json({ok:false,error:'Method not allowed'});
+  const host=typeof req.headers.host==='string'?req.headers.host:'scalp-omega-ai-webhook.vercel.app';
+  try{
+    const r=await fetch('https://'+host+'/api/confluence?dataOnly=1&ts='+Date.now(),{cache:'no-store',headers:{Accept:'application/json'}});
+    const text=await r.text();let data;try{data=JSON.parse(text)}catch{data=null}
+    if(!r.ok||!data?.ok)return res.status(502).json({ok:false,error:data?.error||text.slice(0,500)});
+    // DATA-ONLY CONTRACT: expose observations and market data only.
+    // Deliberately omit all trading decisions, signals, probabilities, entries, stops, targets and risk gates.
+    return res.status(200).json({ok:true,engine:'SCALP-Ω AI Data Feed v1',source:data.source,instrument:data.instrument,fetchedAt:data.fetchedAt,analysisMode:'DATA_ONLY_CLOSED_CANDLES',market:data.market,features:data.features,contexts:data.contexts,externalIntelligence:data.externalIntelligence,observations:data.observations,dataQuality:data.dataQuality,featureSummary:data.featureSummary});
+  }catch(e){return res.status(502).json({ok:false,error:e?.message||String(e)})}
+}
