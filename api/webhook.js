@@ -32,7 +32,8 @@ export default async function handler(req,res){
   const alert=parseBody(req);
   const jobId=crypto.randomUUID();
   const base=`https://${req.headers.host}`;
-  const payload={jobId,alert,receivedAt:new Date().toISOString(),source:'TRADINGVIEW'};
+  const {secret:_,token:__,webhookSecret:___,...sanitizedAlert}=alert;
+  const payload={jobId,alert:sanitizedAlert,receivedAt:new Date().toISOString(),source:'TRADINGVIEW'};
   const qstashToken=process.env.QSTASH_TOKEN;
   const qstashDestination=process.env.QSTASH_DESTINATION_URL || `https://${req.headers.host}/api/process-signal`;
   if(qstashToken){
