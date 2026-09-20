@@ -1,6 +1,6 @@
 import { waitUntil } from '@vercel/functions';
 import { getLiveMemory, persistMarketMemory } from '../lib/market-memory.js';
-import { compactAiInput } from '../lib/ai-context.js';
+import { compactAiInput } from '../lib/ai-context-compact.js';
 
 export const maxDuration = 60;
 
@@ -87,7 +87,7 @@ DECISION AUTHORITY:
 - Confidence is evidence strength, not a validated win probability.
 
 DATA ARCHITECTURE:
-- Supplied candle history may be compressed from a larger historical store.
+- Full candle history is stored in Supabase; this request receives a compact analytical representation.
 - candleContext contains representative historical anchors plus the most recent confirmed candles.
 - realtime is the freshest market snapshot.
 - Use 1D, 4H, 1H for context and 15m, 5m, 1m for execution.
