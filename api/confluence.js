@@ -3,6 +3,7 @@ import { buildConfluence } from '../lib/confluence-engine.js';
 import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 import { fetchDerivativeData } from '../lib/derivatives-data.js';
 import { fetchExternalIntelligence } from '../lib/external-intelligence.js';
+import { getFredMacroSnapshot, fredConfigured } from '../lib/fred.js';
 import { getRecentLiquidations } from '../lib/supabase.js';
 
 export const maxDuration = 60;
@@ -113,6 +114,17 @@ export default async function handler(req, res) {
       volume:Number(v.volume?.[i] ?? 0),
       confirmed:Number(ts) < end
     })).filter(x=>[x.timestamp,x.open,x.high,x.low,x.close].every(Number.isFinite));
+  };
+
+  const fetchFredMacro = async () => {
+    if (!fredConfigured()) {
+      return { source: 'FRED', provider: 'Federal Reserve Bank of St. Louis', status: 'NOT_CONFIGURED', fetchedAt: new Date().toISOString(), series: {}, errors: { _config: 'FRED_API_KEY is not configured' } };
+    }
+    try {
+      return await getFredMacroSnapshot(undefined, { limit: 12 });
+    } catch (error) {
+      return { source: 'FRED', provider: 'Federal Reserve Bank of St. Louis', status: 'UNAVAILABLE', fetchedAt: new Date().toISOString(), series: {}, errors: { _request: error?.message || String(error) } };
+    }
   };
 
   const fetchPersistedLiquidations = async () => {
@@ -319,7 +331,7 @@ export default async function handler(req, res) {
     );
 
     const base15m = candles['15m'] || [];
-    const [derivativesData, externalIntelligence] = await Promise.all([
+    const [derivativesData, externalIntelligence, macroContext] = await Promise.all([
       fetchDerivativeData({
         instId,
         begin: base15m[0]?.time ?? null,
@@ -327,7 +339,8 @@ export default async function handler(req, res) {
         mode: 'live',
         signal: controller.signal
       }).catch(() => ({ current: {}, history: { oi: [], funding: [], longShort: [], takerVolume: [] } })),
-      fetchExternalIntelligence({ symbol: 'ETHUSDT', signal: controller.signal }).catch(() => ({ ok:false, providers:{}, crossExchange:{agreement:'UNAVAILABLE'}, dataQuality:{status:'FAILED'} }))
+      fetchExternalIntelligence({ symbol: 'ETHUSDT', signal: controller.signal }).catch(() => ({ ok:false, providers:{}, crossExchange:{agreement:'UNAVAILABLE'}, dataQuality:{status:'FAILED'} })),
+      fetchFredMacro()
     ]);
 
     const derivativesCurrent = derivativesData.current || {};
@@ -423,6 +436,7 @@ export default async function handler(req, res) {
       fetchedAt: new Date().toISOString(),
       market,
       externalIntelligence,
+      macroContext,
       confluence,
       institutional: apiInstitutional,
       dataQuality: {
@@ -434,6 +448,11 @@ export default async function handler(req, res) {
         ),
         oldestCandleTs,
         newestCandleTs,
+        fred: {
+          configured: fredConfigured(),
+          status: macroContext?.status || 'UNKNOWN',
+          seriesCount: Object.keys(macroContext?.series || {}).length
+        },
         newestClosedCandleTs,
         chronologicalOrder: Object.fromEntries(
           candleResults.map(([bar, data]) => [bar, (data.length < 2 || data[0].time <= data.at(-1).time)])
