@@ -1,150 +1,24 @@
+import { waitUntil } from '@vercel/functions';
+import { getLiveMemory, persistMarketMemory } from '../lib/market-memory.js';
+import { compactAiInput } from '../lib/ai-context.js';
+
 export const maxDuration = 60;
 
 const LIVE_MAX_AGE_MS = 30_000;
 
-function compactProvider(p) {
-  if (!p) return null;
-  const base = {
-    available: p.available === true,
-    source: p.source || null,
-    timestamp: p.timestamp || null,
-    price: p.price ?? null,
-    markPrice: p.markPrice ?? null,
-    indexPrice: p.indexPrice ?? null,
-    fundingRate: p.fundingRate ?? p.currentFunding ?? null,
-    nextFundingRate: p.nextFundingRate ?? null,
-    openInterest: p.openInterest ?? null,
-    book: p.book ? {
-      bestBid: p.book.bestBid ?? null,
-      bestAsk: p.book.bestAsk ?? null,
-      mid: p.book.mid ?? null,
-      spread: p.book.spread ?? null,
-      spreadBps: p.book.spreadBps ?? null,
-      bidDepth: p.book.bidDepth ?? null,
-      askDepth: p.book.askDepth ?? null,
-      imbalance: p.book.imbalance ?? null
-    } : null,
-    options: p.options ? {
-      instrumentCount: p.options.instrumentCount ?? null,
-      totalOI: p.options.totalOI ?? null,
-      callOI: p.options.callOI ?? null,
-      putOI: p.options.putOI ?? null,
-      putCallOI: p.options.putCallOI ?? null,
-      weightedIV: p.options.weightedIV ?? null,
-      topExpiries: Array.isArray(p.options.topExpiries) ? p.options.topExpiries.slice(0, 6) : []
-    } : null
+function trimBook(book, limit = 20) {
+  if (!book) return null;
+  return {
+    time: book.time ?? book.ts ?? null,
+    seqId: book.seqId ?? book.seqNum ?? null,
+    bids: Array.isArray(book.bids) ? book.bids.slice(0, limit) : [],
+    asks: Array.isArray(book.asks) ? book.asks.slice(0, limit) : []
   };
-
-  // Binance is a full market-data source in SCALP-Ω. Keep the complete live/order-flow
-  // and candle payload accessible to the reasoning layer, while the compact view avoids
-  // duplicating OKX data structures.
-  if (p.source === 'Binance' && p.futures) {
-    base.binanceCoverage = p.coverage || null;
-    base.binanceSummary = {
-      futuresPrice: p.price ?? null,
-      spotPrice: p.spotPrice ?? null,
-      futuresSpotBasisPct: p.futuresSpotBasisPct ?? null,
-      adlRisk: p.adlRisk ?? null
-    };
-    base.binanceFutures = {
-      ticker24h: p.futures.ticker24h || null,
-      priceTicker: p.futures.priceTicker || null,
-      priceTickerV2: p.futures.priceTickerV2 || null,
-      bookTicker: p.futures.bookTicker || null,
-      orderBook: p.futures.orderBook ? {
-        metrics: p.futures.orderBook.metrics || null,
-        bids: Array.isArray(p.futures.orderBook.raw?.bids) ? p.futures.orderBook.raw.bids.slice(0, 100) : [],
-        asks: Array.isArray(p.futures.orderBook.raw?.asks) ? p.futures.orderBook.raw.asks.slice(0, 100) : [],
-        rpi: p.futures.orderBook.rpi || null
-      } : null,
-      trades: Array.isArray(p.futures.trades) ? p.futures.trades.slice(0, 500) : [],
-      aggTrades: Array.isArray(p.futures.aggTrades) ? p.futures.aggTrades.slice(0, 500) : [],
-      markAndFunding: p.futures.markAndFunding || null,
-      openInterest: p.futures.openInterest || null,
-      histories: p.futures.histories || {},
-      candles: {
-        klines: p.futures.candles?.klines || {},
-        markPrice: Object.fromEntries(Object.entries(p.futures.candles?.markPrice || {}).map(([k,v]) => [k, Array.isArray(v) ? v.slice(-250) : []])),
-        indexPrice: Object.fromEntries(Object.entries(p.futures.candles?.indexPrice || {}).map(([k,v]) => [k, Array.isArray(v) ? v.slice(-250) : []])),
-        premiumIndex: Object.fromEntries(Object.entries(p.futures.candles?.premiumIndex || {}).map(([k,v]) => [k, Array.isArray(v) ? v.slice(-250) : []])),
-        continuous: Object.fromEntries(Object.entries(p.futures.candles?.continuous || {}).map(([k,v]) => [k, Array.isArray(v) ? v.slice(-250) : []]))
-      },
-      riskAndStructure: p.futures.riskAndStructure || null
-    };
-    base.binanceSpot = {
-      ticker24h: p.spot?.ticker24h || null,
-      priceTicker: p.spot?.priceTicker || null,
-      bookTicker: p.spot?.bookTicker || null,
-      orderBook: p.spot?.orderBook ? {
-        metrics: p.spot.orderBook.metrics || null,
-        bids: Array.isArray(p.spot.orderBook.raw?.bids) ? p.spot.orderBook.raw.bids.slice(0, 100) : [],
-        asks: Array.isArray(p.spot.orderBook.raw?.asks) ? p.spot.orderBook.raw.asks.slice(0, 100) : []
-      } : null,
-      trades: Array.isArray(p.spot?.trades) ? p.spot.trades.slice(0, 500) : [],
-      aggTrades: Array.isArray(p.spot?.aggTrades) ? p.spot.aggTrades.slice(0, 500) : [],
-      candles: Object.fromEntries(Object.entries(p.spot?.candles || {}).map(([k,v]) => [k, Array.isArray(v) ? v.slice(-250) : []]))
-    };
-    base.binanceApiKeyData = p.apiKeyData || null;
-  }
-  if (p.source === 'Bybit' && p.futures) {
-    base.bybitCoverage = p.coverage || null;
-    base.bybitSummary = {
-      linearPrice: p.price ?? null,
-      markPrice: p.markPrice ?? null,
-      indexPrice: p.indexPrice ?? null,
-      spotPrice: p.spotPrice ?? null,
-      basis: p.basis ?? null,
-      basisRate: p.basisRate ?? null
-    };
-    base.bybitFutures = {
-      ticker: p.futures.ticker || null,
-      orderBook: p.futures.orderBook || null,
-      trades: Array.isArray(p.futures.trades) ? p.futures.trades.slice(0, 500) : [],
-      instruments: p.futures.instruments || null,
-      deliveryPrice: p.futures.deliveryPrice || [],
-      riskLimit: p.futures.riskLimit || null,
-      priceLimit: p.futures.priceLimit || null,
-      fundingHistory: p.futures.fundingHistory || [],
-      openInterest: p.futures.openInterest || [],
-      longShort: p.futures.longShort || [],
-      histories: p.futures.histories || {},
-      candles: p.futures.candles || {}
-    };
-    base.bybitSpot = {
-      ticker: p.spot?.ticker || null,
-      orderBook: p.spot?.orderBook || null,
-      trades: Array.isArray(p.spot?.trades) ? p.spot.trades.slice(0, 60) : [],
-      instruments: p.spot?.instruments || null,
-      candles: p.spot?.candles || {}
-    };
-  }
-  return base;
-}
-
-function trimBook(book) {
-  return book ? {
-    time: book.time ?? null,
-    seqId: book.seqId ?? null,
-    bids: Array.isArray(book.bids) ? book.bids.slice(0, 20) : [],
-    asks: Array.isArray(book.asks) ? book.asks.slice(0, 20) : []
-  } : null;
 }
 
 function buildAiInput(dataFeed, liveData) {
-  const externalRaw = dataFeed.externalIntelligence || dataFeed.market?.externalIntelligence || null;
-
-  const compactExternal = externalRaw ? {
-    ok: externalRaw.ok,
-    fetchedAt: externalRaw.fetchedAt,
-    crossExchange: externalRaw.crossExchange,
-    featureSignals: externalRaw.featureSignals,
-    dataQuality: externalRaw.dataQuality,
-    providers: Object.fromEntries(
-      Object.entries(externalRaw.providers || {}).map(([k, v]) => [k, compactProvider(v)])
-    )
-  } : null;
-
   const market = dataFeed.market || {};
+  const ticker = liveData?.ticker || {};
 
   return {
     engine: dataFeed.engine,
@@ -174,24 +48,71 @@ function buildAiInput(dataFeed, liveData) {
     },
     features: dataFeed.features || {},
     contexts: dataFeed.contexts || {},
-    externalIntelligence: compactExternal,
+    externalIntelligence: dataFeed.externalIntelligence || dataFeed.market?.externalIntelligence || null,
     dataQuality: dataFeed.dataQuality || {},
     featureSummary: dataFeed.featureSummary || {},
     realtime: {
-      source: liveData.source || null,
-      receivedAt: liveData.updatedAt || null,
-      connected: liveData.connected === true,
-      ticker: liveData.ticker ? {
-        last: liveData.ticker.last ?? null,
-        bid: liveData.ticker.bid ?? null,
-        ask: liveData.ticker.ask ?? null,
-        markPrice: liveData.ticker.markPrice ?? null
+      source: liveData?.source || null,
+      receivedAt: liveData?.updatedAt || null,
+      connected: liveData?.connected === true,
+      ticker: liveData?.ticker ? {
+        last: ticker.last ?? ticker.lastPrice ?? ticker.lastPx ?? null,
+        bid: ticker.bid ?? ticker.bidPx ?? null,
+        ask: ticker.ask ?? ticker.askPx ?? null,
+        markPrice: ticker.markPrice ?? ticker.markPx ?? null
       } : null,
-      latestTrade: liveData.latestTrade || null,
-      orderBook: trimBook(liveData.orderBook)
+      latestTrade: liveData?.latestTrade || null,
+      orderBook: trimBook(liveData?.orderBook)
     }
   };
 }
+
+async function readJson(response) {
+  const text = await response.text();
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+const systemPrompt = `You are the sole trading-decision and reasoning layer for SCALP-Ω.
+
+The SCALP-Ω upstream application is DATA-ONLY for this request. It collects, normalizes, validates, and summarizes market observations. It does not have decision authority.
+
+DECISION AUTHORITY:
+- The final trading decision belongs to you (GPT) only.
+- Never copy, inherit, obey, or treat an upstream decision, signal, probability, risk gate, entry, stop, or target as authoritative.
+- Upstream data is evidence only.
+- You independently decide LONG, SHORT, or NO_TRADE.
+- Never claim that SCALP-Ω made the trading decision.
+- Never invent unavailable data.
+- Confidence is evidence strength, not a validated win probability.
+
+DATA ARCHITECTURE:
+- Supplied candle history may be compressed from a larger historical store.
+- candleContext contains representative historical anchors plus the most recent confirmed candles.
+- realtime is the freshest market snapshot.
+- Use 1D, 4H, 1H for context and 15m, 5m, 1m for execution.
+- Check source availability, timestamps, cross-exchange agreement, derivatives, order book, trades, liquidations, momentum, volume, volatility, market structure, liquidity, and zones where available.
+- In-progress candles must not be treated as confirmed structural evidence.
+
+DECISION STANDARD:
+- Return NO_TRADE when evidence is conflicting, stale, incomplete, or not actionable.
+- If LONG or SHORT, provide a precise executable entry condition and structural invalidation.
+- Stop and targets must be supported by current structure/liquidity/volatility.
+- Do not manufacture levels to satisfy a format.
+
+Return strict JSON with exactly:
+{
+  "decision": "LONG|SHORT|NO_TRADE",
+  "confidence": 0,
+  "marketRegime": "string",
+  "summary": "string",
+  "evidence": ["string"],
+  "conflicts": ["string"],
+  "entryCondition": "string",
+  "invalidation": "string",
+  "stopLoss": "string",
+  "targets": ["string"],
+  "riskNote": "string"
+}`;
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -199,16 +120,14 @@ export default async function handler(req, res) {
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ ok: false, error: 'OPENAI_API_KEY is not configured' });
-  }
+  if (!apiKey) return res.status(500).json({ ok: false, error: 'OPENAI_API_KEY is not configured' });
 
   const baseUrl = `https://${req.headers.host}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 55_000);
 
   try {
-    const [dataResponse, liveResponse] = await Promise.all([
+    const [dataResponse, liveResponse, previousMemory] = await Promise.all([
       fetch(`${baseUrl}/api/institutional?ts=${Date.now()}`, {
         headers: { Accept: 'application/json' },
         cache: 'no-store',
@@ -218,38 +137,25 @@ export default async function handler(req, res) {
         headers: { Accept: 'application/json' },
         cache: 'no-store',
         signal: controller.signal
-      })
+      }),
+      getLiveMemory({ signal: controller.signal })
     ]);
 
-    const dataText = await dataResponse.text();
-    const liveText = await liveResponse.text();
-
-    let dataFeed = null;
-    let liveData = null;
-
-    try { dataFeed = JSON.parse(dataText); } catch {}
-    try { liveData = JSON.parse(liveText); } catch {}
+    const [dataFeed, liveData] = await Promise.all([
+      readJson(dataResponse),
+      readJson(liveResponse)
+    ]);
 
     if (!dataResponse.ok || !dataFeed?.ok) {
-      return res.status(502).json({
-        ok: false,
-        stage: 'DATA_FEED',
-        error: dataFeed?.error || dataText.slice(0, 500)
-      });
+      return res.status(502).json({ ok: false, stage: 'DATA_FEED', error: dataFeed?.error || 'Data feed unavailable' });
     }
 
     if (!liveResponse.ok || !liveData?.ok) {
-      return res.status(502).json({
-        ok: false,
-        stage: 'LIVE_MARKET_DATA',
-        error: liveData?.error || liveText.slice(0, 500)
-      });
+      return res.status(502).json({ ok: false, stage: 'LIVE_MARKET_DATA', error: liveData?.error || 'Live market data unavailable' });
     }
 
     const liveUpdatedAt = Date.parse(liveData.updatedAt || '');
-    const liveAgeMs = Number.isFinite(liveUpdatedAt)
-      ? Math.max(0, Date.now() - liveUpdatedAt)
-      : null;
+    const liveAgeMs = Number.isFinite(liveUpdatedAt) ? Math.max(0, Date.now() - liveUpdatedAt) : null;
 
     if (!liveData.connected || liveAgeMs == null || liveAgeMs > LIVE_MAX_AGE_MS) {
       return res.status(503).json({
@@ -265,56 +171,11 @@ export default async function handler(req, res) {
       });
     }
 
-    const aiInput = buildAiInput(dataFeed, liveData);
+    const rawAiInput = buildAiInput(dataFeed, liveData);
+    const aiInput = compactAiInput(rawAiInput, { previousLive: previousMemory });
 
-    const systemPrompt = `You are the sole trading-decision and reasoning layer for SCALP-Ω.
-
-The upstream SCALP-Ω application is DATA-ONLY. It collects, normalizes, and calculates market observations/features, but it does NOT authorize or generate trading decisions for you.
-
-DECISION AUTHORITY:
-- The final trading decision belongs to you (GPT) only.
-- Do not copy, inherit, obey, or treat any upstream decision/signal/probability/risk gate as authoritative.
-- The upstream feed is evidence only.
-- You may independently conclude LONG, SHORT, or NO_TRADE from the supplied data.
-- Never claim that the SCALP-Ω data engine made the decision.
-- Never convert a model score into a win probability.
-- Do not invent unavailable data.
-
-DATA PRIORITY:
-1. realtime.ticker is the freshest current price snapshot.
-2. realtime.latestTrade and realtime.orderBook describe current microstructure.
-3. market.candlesByTf contains historical OHLCV; use confirmed/closed candles for structural confirmation.
-4. features and featureSummary are calculated observations derived from closed candles.
-5. market.candlesByExchange provides cross-exchange context.
-6. derivatives, liquidations, funding, open-interest, taker-volume, and externalIntelligence are contextual evidence and must be checked for freshness/availability.
-
-ANALYSIS STANDARD:
-- Analyze ETH-USDT-SWAP using the entire supplied evidence set.
-- Use 1D, 4H, 1H for regime/context and 15m, 5m, 1m for execution.
-- Inspect structure, trend, liquidity, support/resistance, supply/demand, volatility, momentum, volume, derivatives, order-book imbalance, trade flow, liquidations, and cross-exchange agreement where data exists.
-- Do not use an in-progress candle as confirmed structural evidence.
-- Distinguish facts, conditions, and your own inference.
-- A trade is allowed only when the evidence supports an executable plan; otherwise return NO_TRADE.
-- If LONG or SHORT, give a precise entry method and exact levels only when they are supported by the supplied market structure/data.
-- Use a structural invalidation for the stop. Targets must be consistent with nearby liquidity/structure and current volatility.
-- Never manufacture a level merely to satisfy the requested format.
-
-Return strict JSON with exactly these keys:
-{
-  "decision": "LONG|SHORT|NO_TRADE",
-  "confidence": 0,
-  "marketRegime": "string",
-  "summary": "string",
-  "evidence": ["string"],
-  "conflicts": ["string"],
-  "entryCondition": "string",
-  "invalidation": "string",
-  "stopLoss": "string",
-  "targets": ["string"],
-  "riskNote": "string"
-}
-
-The confidence value is an evidence-strength score from 0 to 100, NOT a validated probability of profit or win rate.`;
+    // Historical persistence and realtime cache are non-authoritative infrastructure.
+    waitUntil(persistMarketMemory(dataFeed, liveData).catch(() => null));
 
     const openaiResponse = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -335,16 +196,14 @@ The confidence value is an evidence-strength score from 0 to 100, NOT a validate
     });
 
     const openaiText = await openaiResponse.text();
-
     let openaiData = null;
     try { openaiData = JSON.parse(openaiText); } catch {}
 
     if (!openaiResponse.ok) {
-      const message = openaiData?.error?.message || openaiText.slice(0, 1000);
       return res.status(openaiResponse.status === 429 ? 429 : 502).json({
         ok: false,
         stage: 'OPENAI',
-        error: message,
+        error: openaiData?.error?.message || openaiText.slice(0, 1000),
         decisionGenerated: false
       });
     }
@@ -365,14 +224,17 @@ The confidence value is an evidence-strength score from 0 to 100, NOT a validate
         ok: false,
         stage: 'OPENAI_PARSE',
         error: 'OpenAI returned an invalid trading-decision JSON object',
-        decisionGenerated: false,
-        rawOutput: outputText.slice(0, 5000)
+        decisionGenerated: false
       });
     }
 
-    const result = {
+    const currentPrice = liveData.ticker
+      ? Number(liveData.ticker.last ?? liveData.ticker.lastPrice ?? liveData.ticker.lastPx)
+      : null;
+
+    return res.status(200).json({
       ok: true,
-      engine: 'SCALP-Ω GPT-5.6 Luna Decision Layer v1',
+      engine: 'SCALP-Ω GPT-5.6 Luna Decision Layer v2',
       model: 'gpt-5.6-luna',
       decisionAuthority: 'CHATGPT_ONLY',
       decisionPolicy: 'UPSTREAM_DATA_ONLY_GPT_DECIDES',
@@ -381,18 +243,15 @@ The confidence value is an evidence-strength score from 0 to 100, NOT a validate
       dataFetchedAt: dataFeed.fetchedAt,
       realtimeReceivedAt: liveData.updatedAt,
       liveAgeMs,
-      currentPrice: liveData.ticker?.last != null ? Number(liveData.ticker.last) : null,
-      dataFeed,
-      realtime: liveData,
+      currentPrice: Number.isFinite(currentPrice) ? currentPrice : null,
+      memory: {
+        historicalStore: 'SUPABASE',
+        realtimeStore: 'UPSTASH_REDIS',
+        upstashConfigured: previousMemory.configured,
+        rawHistoricalCandlesSentToModel: false
+      },
       analysis
-    };
-
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-    res.setHeader('CDN-Cache-Control', 'no-store');
-    res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
-
-    return res.status(200).send(JSON.stringify(result, null, 2));
+    });
   } catch (error) {
     return res.status(502).json({
       ok: false,
