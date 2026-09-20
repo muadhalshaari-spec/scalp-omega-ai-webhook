@@ -8,7 +8,6 @@ export const config = {
 
 const OKX_PUBLIC_WS = 'wss://ws.okx.com:8443/ws/v5/public';
 const OKX_BUSINESS_WS = 'wss://ws.okx.com:8443/ws/v5/business';
-const BINANCE_LIQUIDATION_WS = 'wss://fstream.binance.com/ws/ethusdt@forceOrder';
 const INST_ID = 'ETH-USDT-SWAP';
 const TIMEFRAMES = ['1m', '5m', '15m', '1H', '4H', '1D'];
 const REQUIRED_CANDLE_AGE_MS = 180_000;
@@ -16,8 +15,6 @@ const LIVE_WAIT_MS = 8_000;
 
 let okxPublic = null;
 let okxBusiness = null;
-let binanceLiquidation = null;
-let liquidationReconnectTimer = null;
 let reconnectTimer = null;
 let heartbeatTimer = null;
 const readyWaiters = new Set();
@@ -136,7 +133,6 @@ function scheduleReconnect() {
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connectOKX();
-connectBinanceLiquidation();
   }, 1500);
 }
 
@@ -188,7 +184,14 @@ function connectSocket(url, args, kind) {
       const msg = JSON.parse(text);
       const event = msg?.event;
       if (event === 'error') {
+        if (msg?.arg?.channel === 'liquidation-orders') state.liquidationFeed.connected = false;
         state.updatedAt = new Date().toISOString();
+        broadcast();
+        return;
+      }
+      if (event === 'subscribe' && msg?.arg?.channel === 'liquidation-orders') {
+        state.liquidationFeed.connected = true;
+        state.liquidationFeed.updatedAt = new Date().toISOString();
         broadcast();
         return;
       }
@@ -197,6 +200,23 @@ function connectSocket(url, args, kind) {
       const rows = Array.isArray(msg?.data) ? msg.data : [];
       const row = rows[rows.length - 1];
       if (!channel || !row) return;
+
+      if (channel === 'liquidation-orders') {
+        const item = row;
+        const details = Array.isArray(item?.details) ? item.details : [];
+        for (const detail of details) {
+          const liq = normalizeOKXLiquidation(item, detail);
+          if (!liq) continue;
+          state.liquidations = [liq, ...state.liquidations].slice(0, 200);
+          state.liquidationFeed.received += 1;
+          state.liquidationFeed.connected = true;
+          state.liquidationFeed.updatedAt = new Date().toISOString();
+          void persistLiquidation(liq);
+        }
+        state.updatedAt = new Date().toISOString();
+        broadcast();
+        return;
+      }
 
       if (channel === 'tickers') state.ticker = row;
       else if (channel === 'trades') state.latestTrade = row;
@@ -239,88 +259,57 @@ function connectSocket(url, args, kind) {
   });
 }
 
-function normalizeLiquidation(msg) {
-  const o = msg?.o || {};
-  const price = Number(o.p || o.ap);
-  const qty = Number(o.q || o.z || o.origQty);
-  const ts = Number(msg?.E || o.T || Date.now());
+function normalizeOKXLiquidation(item, detail) {
+  const d = detail || {};
+  const price = Number(d.bkPx);
+  const qty = Number(d.sz);
+  const ts = Number(d.ts);
+  const side = String(d.side || '').toLowerCase();
+  const posSide = String(d.posSide || '').toLowerCase();
   if (![price, qty, ts].every(Number.isFinite)) return null;
-  const orderSide = String(o.S || '').toUpperCase();
-  const positionSide = String(o.ps || '').toUpperCase();
-  const liquidationPosition = positionSide === 'LONG' || positionSide === 'SHORT'
-    ? positionSide
-    : orderSide === 'SELL' ? 'LONG_LIQUIDATION'
-    : orderSide === 'BUY' ? 'SHORT_LIQUIDATION'
-    : 'UNKNOWN';
+  const liquidationPosition = posSide === 'long' || posSide === 'short'
+    ? posSide.toUpperCase()
+    : side === 'sell' ? 'LONG' : side === 'buy' ? 'SHORT' : 'UNKNOWN';
+  const instId = String(item?.instId || '');
+  if (instId !== INST_ID) return null;
   return {
-    id: `binance:${o.s || 'ETHUSDT'}:${o.i || o.c || ts}:${price}`,
+    id: `okx:${instId}:${ts}:${side}:${price}:${qty}`,
     timestamp: ts,
     price,
     size: Math.abs(qty),
-    notional: price * Math.abs(qty),
-    side: orderSide,
-    positionSide,
+    notional: Math.abs(price * qty),
+    side,
+    positionSide: posSide,
     liquidationPosition,
-    source: 'BINANCE_FORCE_ORDER_STREAM'
+    source: 'OKX_LIQUIDATION_ORDERS'
   };
 }
 
-function scheduleLiquidationReconnect() {
-  if (liquidationReconnectTimer) return;
-  liquidationReconnectTimer = setTimeout(() => {
-    liquidationReconnectTimer = null;
-    connectBinanceLiquidation();
-  }, 1500);
+async function persistLiquidation(event) {
+  try {
+    const result = await insertLiquidationEvents([{
+      id: event.id,
+      event_ts: new Date(event.timestamp).toISOString(),
+      instrument: INST_ID,
+      price: event.price,
+      qty: event.size,
+      notional: event.notional,
+      side: event.liquidationPosition,
+      source: event.source,
+      raw: event
+    }]);
+    if (result?.persisted) state.liquidationFeed.persisted += 1;
+  } catch {}
 }
 
-function connectBinanceLiquidation() {
-  if (binanceLiquidation?.readyState === WebSocket.OPEN || binanceLiquidation?.readyState === WebSocket.CONNECTING) return;
-  const ws = new WebSocket(BINANCE_LIQUIDATION_WS, { handshakeTimeout: 10000, perMessageDeflate: false });
-  binanceLiquidation = ws;
-  ws.on('open', () => {
-    state.liquidationFeed.connected = true;
-    state.liquidationFeed.updatedAt = new Date().toISOString();
-    broadcast();
-  });
-  ws.on('message', raw => {
-    try {
-      const event = normalizeLiquidation(JSON.parse(raw.toString()));
-      if (!event) return;
-      state.liquidations = [event, ...state.liquidations].slice(0, 200);
-      state.liquidationFeed.received += 1;
-      state.liquidationFeed.updatedAt = new Date().toISOString();
-      void insertLiquidationEvents([{
-        id: event.id,
-        event_ts: new Date(event.timestamp).toISOString(),
-        instrument: 'ETHUSDT',
-        price: event.price,
-        qty: event.size,
-        notional: event.notional,
-        side: event.liquidationPosition,
-        source: event.source,
-        raw: event
-      }]).then(r => {
-        if (r?.persisted) state.liquidationFeed.persisted += 1;
-      }).catch(() => {});
-      broadcast();
-    } catch {}
-  });
-  ws.on('close', () => {
-    if (binanceLiquidation === ws) binanceLiquidation = null;
-    state.liquidationFeed.connected = false;
-    state.liquidationFeed.updatedAt = new Date().toISOString();
-    broadcast();
-    scheduleLiquidationReconnect();
-  });
-  ws.on('error', () => { try { ws.close(); } catch {} });
-}
 
 function connectOKX() {
   if (!okxPublic || okxPublic.readyState !== WebSocket.OPEN) {
     connectSocket(OKX_PUBLIC_WS, [
       { channel: 'tickers', instId: INST_ID },
       { channel: 'trades', instId: INST_ID },
-      { channel: 'books5', instId: INST_ID }
+      { channel: 'books5', instId: INST_ID },
+      { channel: 'liquidation-orders', instType: 'SWAP' }
     ], 'public');
   }
 
