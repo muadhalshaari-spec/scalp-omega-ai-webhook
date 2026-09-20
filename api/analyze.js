@@ -51,6 +51,7 @@ function buildAiInput(dataFeed, liveData) {
     externalIntelligence: dataFeed.externalIntelligence || dataFeed.market?.externalIntelligence || null,
     dataQuality: dataFeed.dataQuality || {},
     featureSummary: dataFeed.featureSummary || {},
+    macroContext: dataFeed.macroContext || null,
     realtime: {
       source: liveData?.source || null,
       receivedAt: liveData?.updatedAt || null,
