@@ -75,6 +75,104 @@ export default async function handler(req, res) {
     const institutional = marketData.institutional || null;
     const deterministicDecision = institutional?.decision || marketData.confluence?.directionBias || 'NO_TRADE';
 
+    const compactProvider = (p) => p ? ({
+      available: p.available === true,
+      source: p.source || null,
+      timestamp: p.timestamp || null,
+      price: p.price ?? null,
+      markPrice: p.markPrice ?? null,
+      indexPrice: p.indexPrice ?? null,
+      fundingRate: p.fundingRate ?? p.currentFunding ?? null,
+      nextFundingRate: p.nextFundingRate ?? null,
+      openInterest: p.openInterest ?? null,
+      book: p.book ? {
+        bestBid: p.book.bestBid ?? null,
+        bestAsk: p.book.bestAsk ?? null,
+        mid: p.book.mid ?? null,
+        spread: p.book.spread ?? null,
+        spreadBps: p.book.spreadBps ?? null,
+        bidDepth: p.book.bidDepth ?? null,
+        askDepth: p.book.askDepth ?? null,
+        imbalance: p.book.imbalance ?? null
+      } : null,
+      options: p.options ? {
+        instrumentCount: p.options.instrumentCount ?? null,
+        totalOI: p.options.totalOI ?? null,
+        callOI: p.options.callOI ?? null,
+        putOI: p.options.putOI ?? null,
+        putCallOI: p.options.putCallOI ?? null,
+        weightedIV: p.options.weightedIV ?? null,
+        topExpiries: Array.isArray(p.options.topExpiries) ? p.options.topExpiries.slice(0, 6) : []
+      } : null
+    }) : null;
+
+    const compactInstitutional = institutional ? {
+      version: institutional.version,
+      decision: institutional.decision,
+      deterministicDecision: institutional.deterministicDecision,
+      titanDecision: institutional.titanDecision,
+      probability: institutional.probability,
+      setup: institutional.setup,
+      setupCandidates: Array.isArray(institutional.setupCandidates) ? institutional.setupCandidates.slice(0, 3) : [],
+      regime: institutional.regime,
+      structure: institutional.structure,
+      structure1H: institutional.structure1H,
+      liquidity: institutional.liquidity,
+      zones: institutional.zones,
+      sequence: institutional.sequence,
+      micro: institutional.micro,
+      derivatives: institutional.derivatives ? {
+        pressure: institutional.derivatives.pressure,
+        openInterest: institutional.derivatives.openInterest,
+        funding: institutional.derivatives.funding,
+        oi: institutional.derivatives.oi,
+        taker: institutional.derivatives.taker,
+        longShort: institutional.derivatives.longShort
+      } : null,
+      eventRisk: institutional.eventRisk,
+      risk: institutional.risk,
+      executionPlan: institutional.executionPlan,
+      ensemble: institutional.ensemble,
+      meta: institutional.meta,
+      externalIntelligence: institutional.externalIntelligence ? {
+        ok: institutional.externalIntelligence.ok,
+        fetchedAt: institutional.externalIntelligence.fetchedAt,
+        crossExchange: institutional.externalIntelligence.crossExchange,
+        featureSignals: institutional.externalIntelligence.featureSignals,
+        dataQuality: institutional.externalIntelligence.dataQuality,
+        providers: Object.fromEntries(Object.entries(institutional.externalIntelligence.providers || {}).map(([k,v]) => [k, compactProvider(v)]))
+      } : null,
+      titan: institutional.titan ? {
+        engine: institutional.titan.engine,
+        version: institutional.titan.version,
+        decision: institutional.titan.decision,
+        baseDecision: institutional.titan.baseDecision,
+        supportDirection: institutional.titan.supportDirection,
+        blocked: institutional.titan.blocked,
+        blockers: institutional.titan.blockers,
+        score: institutional.titan.score,
+        confidence: institutional.titan.confidence,
+        summary: institutional.titan.summary,
+        traces: Array.isArray(institutional.titan.traces) ? institutional.titan.traces : []
+      } : null
+    } : null;
+
+    const externalRaw = marketData.externalIntelligence || marketData.market?.externalIntelligence || null;
+    const compactExternal = externalRaw ? {
+      ok: externalRaw.ok,
+      fetchedAt: externalRaw.fetchedAt,
+      crossExchange: externalRaw.crossExchange,
+      featureSignals: externalRaw.featureSignals,
+      dataQuality: externalRaw.dataQuality,
+      providers: Object.fromEntries(Object.entries(externalRaw.providers || {}).map(([k,v]) => [k, compactProvider(v)]))
+    } : null;
+
+    const trimBook = (book) => book ? {
+      time: book.time ?? null,
+      bids: Array.isArray(book.bids) ? book.bids.slice(0, 10) : [],
+      asks: Array.isArray(book.asks) ? book.asks.slice(0, 10) : []
+    } : null;
+
     const aiInput = {
       engine: marketData.engine,
       source: marketData.source,
@@ -82,27 +180,31 @@ export default async function handler(req, res) {
       analysisMode: marketData.analysisMode,
       fetchedAt: marketData.fetchedAt,
       market: {
-        ...marketData.market,
-        livePrice,
-        liveStateUpdatedAt: liveData.updatedAt,
-        liveStateAgeMs: liveAgeMs
+        price: marketData.market?.price ?? null,
+        openInterest: marketData.market?.openInterest ?? null,
+        fundingRate: marketData.market?.fundingRate ?? null,
+        fundingTime: marketData.market?.fundingTime ?? null,
+        nextFundingTime: marketData.market?.nextFundingTime ?? null,
+        nextFundingRate: marketData.market?.nextFundingRate ?? null
       },
       confluence: marketData.confluence,
-      institutional,
+      institutional: compactInstitutional,
       deterministicDecision,
-      executionPlan: institutional?.executionPlan || null,
-      historicalAnalogs: institutional?.analogs || null,
-      externalIntelligence: marketData.externalIntelligence || marketData.market?.externalIntelligence || null,
+      externalIntelligence: compactExternal,
       dataQuality: marketData.dataQuality,
       featureSummary: marketData.featureSummary,
       realtime: {
         source: liveData.source,
         receivedAt: liveData.updatedAt,
         connected: liveData.connected,
-        ticker: liveData.ticker,
-        latestTrade: liveData.latestTrade,
-        orderBook: liveData.orderBook,
-        candles: liveData.candles
+        ticker: liveData.ticker ? {
+          last: liveData.ticker.last ?? null,
+          bid: liveData.ticker.bid ?? null,
+          ask: liveData.ticker.ask ?? null,
+          markPrice: liveData.ticker.markPrice ?? null
+        } : null,
+        latestTrade: liveData.latestTrade || null,
+        orderBook: trimBook(liveData.orderBook)
       }
     };
 
