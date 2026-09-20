@@ -422,10 +422,10 @@ export default async function handler(req, res) {
       }]))
     } : null;
 
-    const apiInstitutional = {
-      ...institutional,
-      titan: fullInstitutional ? institutional.titan : compactTitan
-    };
+    // DATA-ONLY CONTRACT: TITAN may remain an internal diagnostic engine,
+    // but its decisions/scores/confidence are never exposed to upstream callers.
+    const { titan: _internalTitan, ...institutionalDataOnly } = institutional || {};
+    const apiInstitutional = institutionalDataOnly;
 
     const payload = {
       ok: true,
