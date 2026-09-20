@@ -81,6 +81,35 @@ export default async function handler(req, res) {
     })).filter((x)=>[x.timestamp,x.open,x.high,x.low,x.close].every(Number.isFinite));
   };
 
+  const fetchDeribitKlines = async () => {
+    const end = Date.now();
+    const start = end - 500 * 15 * 60 * 1000;
+    const qs = new URLSearchParams({
+      instrument_name: 'ETH-PERPETUAL',
+      start_timestamp: String(start),
+      end_timestamp: String(end),
+      resolution: '15'
+    });
+    const r = await fetch('https://www.deribit.com/api/v2/public/get_tradingview_chart_data?' + qs.toString(), {
+      headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-Deribit/1.0' },
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    const text = await r.text();
+    const data = JSON.parse(text);
+    if (!r.ok || data?.error || !data?.result?.ticks?.length) throw new Error('Deribit chart data unavailable');
+    const v = data.result;
+    return v.ticks.map((ts,i)=>({
+      timestamp:Number(ts),
+      open:Number(v.open?.[i]),
+      high:Number(v.high?.[i]),
+      low:Number(v.low?.[i]),
+      close:Number(v.close?.[i]),
+      volume:Number(v.volume?.[i] ?? 0),
+      confirmed:Number(ts) < end
+    })).filter(x=>[x.timestamp,x.open,x.high,x.low,x.close].every(Number.isFinite));
+  };
+
   const fetchBinanceLiquidations = async () => {
     try {
       const r = await fetch('https://fapi.binance.com/fapi/v1/allForceOrders?symbol=ETHUSDT&limit=100', {
@@ -266,7 +295,8 @@ export default async function handler(req, res) {
       fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`),
       fetchJson(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`),
       Promise.resolve(fetchBinanceKlines()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error})),
-      Promise.resolve(fetchBinanceLiquidations()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error}))
+      Promise.resolve(fetchBinanceLiquidations()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error})),
+      Promise.resolve(fetchDeribitKlines()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error}))
     ]);
 
     const book = bookData.data?.[0] || null;
@@ -327,7 +357,9 @@ export default async function handler(req, res) {
       candlesByExchange: {
         OKX: candles['15m'] || [],
         ...(binanceKlinesResult?.ok && Array.isArray(binanceKlinesResult.value) && binanceKlinesResult.value.length
-          ? { BINANCE: binanceKlinesResult.value } : {})
+          ? { BINANCE: binanceKlinesResult.value } : {}),
+        ...(deribitKlinesResult?.ok && Array.isArray(deribitKlinesResult.value) && deribitKlinesResult.value.length
+          ? { DERIBIT: deribitKlinesResult.value } : {})
       },
       liquidations: binanceLiquidationsResult?.ok ? (binanceLiquidationsResult.value || []) : [],
       liquidationHistory: binanceLiquidationsResult?.ok ? (binanceLiquidationsResult.value || []) : [],
