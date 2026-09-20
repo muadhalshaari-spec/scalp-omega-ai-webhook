@@ -95,7 +95,7 @@ export default async function handler(req, res) {
       end_timestamp: String(end),
       resolution: '15'
     });
-    const r = await fetch('${DERIBIT_PUBLIC_BASE}/get_tradingview_chart_data?' + qs.toString(), {
+    const r = await fetch(`${DERIBIT_PUBLIC_BASE}/get_tradingview_chart_data?` + qs.toString(), {
       headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-Deribit/1.0' },
       cache: 'no-store',
       signal: controller.signal
