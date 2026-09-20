@@ -32,6 +32,15 @@ The AI feed is explicitly marked with:
 
 The feed contains historical candles in ascending chronological order and exposes 1000 bars for each configured timeframe where the upstream exchange returns the requested history.
 
+## FRED macro context
+
+- `GET /api/fred` — direct FRED verification endpoint for the configured macro series.
+- The primary `/api/institutional` data feed now fetches FRED macro context during the same request when `FRED_API_KEY` is configured.
+- `/api/analyze` includes a compact `macroContext` in the GPT input; each configured series is capped to its latest 12 observations plus real-time period metadata.
+- FRED is evidence only. It has no trading-decision authority.
+
+Required Vercel environment variable: `FRED_API_KEY` (Production).
+
 ## OpenAI
 
 Set the Vercel environment variable `OPENAI_API_KEY`. The `/api/analyze` endpoint sends the data feed and live market state to GPT-5.6 Luna. If OpenAI is unavailable or rate-limited, the endpoint returns an error and does not substitute a deterministic engine decision.
