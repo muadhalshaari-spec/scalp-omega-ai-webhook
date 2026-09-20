@@ -17,7 +17,7 @@ const self=titanSelfTest();if(!self.passed||self.count!==55)throw new Error("TIT
 const run=runTitanPipeline(base);
 if(Object.keys(run.outputs).length!==55)throw new Error("TITAN_PIPELINE_NOT_55");
 const contractWarnings=Object.values(run.outputs).filter(x=>(x.diagnostics?.warnings||[]).some(w=>String(w).startsWith("MISSING_INPUTS:")));
-if(contractWarnings.length)throw new Error("TITAN_MISSING_INPUT_CONTRACTS_"+contractWarnings.map(x=>x.module?.id||x.moduleId).join(","));
+if(contractWarnings.length)throw new Error("TITAN_MISSING_INPUT_CONTRACTS_"+contractWarnings.map(x=>(x.module?.id||x.moduleId)+":"+((x.diagnostics?.warnings||[]).filter(w=>String(w).startsWith("MISSING_INPUTS:")).join("|"))).join(","));
 const serialized=JSON.stringify(run);
 if(typeof serialized!=="string"||serialized.length<1000)throw new Error("TITAN_SERIALIZATION_FAILED");
 if(run.summary?.contractWarnings!==0)throw new Error("TITAN_SUMMARY_CONTRACT_WARNINGS");
