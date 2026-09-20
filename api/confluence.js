@@ -355,6 +355,40 @@ export default async function handler(req, res) {
       candleResults.map(([bar, data]) => [bar, data.filter((c) => c.confirmed).at(-1)?.time ?? null])
     );
 
+    const fullInstitutional = String(req.query?.full ?? '') === '1';
+    const compactTitan = institutional?.titan ? {
+      engine: institutional.titan.engine,
+      version: institutional.titan.version,
+      decision: institutional.titan.decision,
+      baseDecision: institutional.titan.baseDecision,
+      supportDirection: institutional.titan.supportDirection,
+      blocked: institutional.titan.blocked,
+      blockers: institutional.titan.blockers,
+      score: institutional.titan.score,
+      confidence: institutional.titan.confidence,
+      summary: institutional.titan.summary,
+      traces: (institutional.titan.traces || []).map((t) => ({
+        index:t.index,id:t.id,status:t.status,direction:t.direction,score:t.score,
+        confidence:t.confidence,blockers:t.blockers || []
+      })),
+      moduleStates: Object.fromEntries(Object.entries(institutional.titan.outputs || {}).map(([id,o]) => [id,{
+        status:o.state?.status,
+        direction:o.state?.direction,
+        score:o.state?.score,
+        confidence:o.state?.confidence,
+        blockers:o.state?.blockers || [],
+        errors:o.diagnostics?.errors || [],
+        warnings:o.diagnostics?.warnings || [],
+        gates:o.state?.gates || {},
+        metrics:o.result?.metrics || {}
+      }]))
+    } : null;
+
+    const apiInstitutional = {
+      ...institutional,
+      titan: fullInstitutional ? institutional.titan : compactTitan
+    };
+
     const payload = {
       ok: true,
       engine: 'SCALP-Ω Confluence Engine v1',
@@ -388,40 +422,6 @@ export default async function handler(req, res) {
             : { status: f.status, count: f.count }
         ])
       )
-    };
-
-    const fullInstitutional = String(req.query?.full ?? '') === '1';
-    const compactTitan = institutional?.titan ? {
-      engine: institutional.titan.engine,
-      version: institutional.titan.version,
-      decision: institutional.titan.decision,
-      baseDecision: institutional.titan.baseDecision,
-      supportDirection: institutional.titan.supportDirection,
-      blocked: institutional.titan.blocked,
-      blockers: institutional.titan.blockers,
-      score: institutional.titan.score,
-      confidence: institutional.titan.confidence,
-      summary: institutional.titan.summary,
-      traces: (institutional.titan.traces || []).map((t) => ({
-        index:t.index,id:t.id,status:t.status,direction:t.direction,score:t.score,
-        confidence:t.confidence,blockers:t.blockers || []
-      })),
-      moduleStates: Object.fromEntries(Object.entries(institutional.titan.outputs || {}).map(([id,o]) => [id,{
-        status:o.state?.status,
-        direction:o.state?.direction,
-        score:o.state?.score,
-        confidence:o.state?.confidence,
-        blockers:o.state?.blockers || [],
-        errors:o.diagnostics?.errors || [],
-        warnings:o.diagnostics?.warnings || [],
-        gates:o.state?.gates || {},
-        metrics:o.result?.metrics || {}
-      }]))
-    } : null;
-
-    const apiInstitutional = {
-      ...institutional,
-      titan: fullInstitutional ? institutional.titan : compactTitan
     };
 
     // Return stable, human-readable English JSON for clean copy/paste.
