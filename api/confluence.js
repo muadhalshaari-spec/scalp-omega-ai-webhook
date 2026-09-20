@@ -281,12 +281,10 @@ export default async function handler(req, res) {
 
     const [tickerData, bookData, tradesData, binanceKlinesResult, persistedLiquidationsResult, deribitKlinesResult] = await Promise.all([
       fetchJson(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`),
-      fetchJson(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${instId}`),
-      fetchJson(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`),
       fetchJson(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`),
       Promise.resolve(fetchBinanceKlines()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error})),
-      Promise.resolve(fetchBinanceLiquidations()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error})),
+      Promise.resolve(fetchPersistedLiquidations()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error})),
       Promise.resolve(fetchDeribitKlines()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error}))
     ]);
 
