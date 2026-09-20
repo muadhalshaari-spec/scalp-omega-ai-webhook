@@ -282,11 +282,10 @@ export default async function handler(req, res) {
       bars.map(async (bar) => [bar, normalize(await fetchCandles(bar))])
     );
 
-    const [tickerData, bookData, tradesData, binanceKlinesResult, persistedLiquidationsResult, deribitKlinesResult] = await Promise.all([
+    const [tickerData, bookData, tradesData, persistedLiquidationsResult, deribitKlinesResult] = await Promise.all([
       fetchJson(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`),
       fetchJson(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`),
-      Promise.resolve(fetchBinanceKlines()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error})),
       Promise.resolve(fetchPersistedLiquidations()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error})),
       Promise.resolve(fetchDeribitKlines()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error}))
     ]);
@@ -350,8 +349,8 @@ export default async function handler(req, res) {
       trades: tradesData.data || [],
       candlesByExchange: {
         OKX: candles['15m'] || [],
-        ...(binanceKlinesResult?.ok && Array.isArray(binanceKlinesResult.value) && binanceKlinesResult.value.length
-          ? { BINANCE: binanceKlinesResult.value } : {}),
+        ...((externalIntelligence?.providers?.binance?.futures?.candles?.klines?.['15m'] || []).length
+          ? { BINANCE: externalIntelligence.providers.binance.futures.candles.klines['15m'] } : {}),
         ...(deribitKlinesResult?.ok && Array.isArray(deribitKlinesResult.value) && deribitKlinesResult.value.length
           ? { DERIBIT: deribitKlinesResult.value } : {})
       },
