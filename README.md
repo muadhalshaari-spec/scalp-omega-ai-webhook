@@ -14,6 +14,7 @@ SCALP-Ω does not authorize, select, rank, or output a live trading decision. Th
 
 - `GET /api/institutional` — data-only AI feed: 1000 candles per configured timeframe plus indicators, derivatives, order book, trades, liquidations, cross-exchange data, and full Binance market-data coverage. No trading decision, entry, stop, target, probability, or risk-gate output.
 - `GET /api/binance` — direct Binance market-data verification endpoint for ETHUSDT. It collects USDⓈ-M Futures + Spot public market data, including ticker/book/trades/aggregate trades, 1000-bar multi-timeframe klines, mark/index/premium series, funding/OI histories, long/short and taker-flow histories, basis, exchange/risk metadata, plus optional API-key protected Binance feeds when `BINANCE_API_KEY` is configured.
+- `GET /api/bybit` — direct Bybit V5 market-data verification endpoint for ETHUSDT Linear + Spot. It collects ticker/order book/recent trades, instrument/risk/price limits, funding/OI/long-short histories, 1000-bar multi-timeframe klines, mark/index/premium-index series, delivery metadata, and exposes audit results for each requested endpoint.
 - `GET /api/confluence` — legacy/internal market-data pipeline retained for compatibility; the AI decision path does not use its deterministic decision output.
 - `GET /api/backtest?depth=5000` — historical research/backtest diagnostics.
 - `GET /api/analyze` — GPT-5.6 Luna reasoning and trading-decision layer. GPT independently decides LONG/SHORT/NO_TRADE from the data feed.
