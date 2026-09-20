@@ -13,7 +13,7 @@ export default async function handler(req, res) {
 
   const instId = 'ETH-USDT-SWAP';
   const bars = ['1m', '5m', '15m', '1H', '4H', '1D'];
-  const CANDLE_TARGET = 1000;
+  const CANDLE_TARGETS = Object.freeze({ '1m': 300, '5m': 300, '15m': 1000, '1H': 300, '4H': 300, '1D': 300 });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 55_000);
 
@@ -44,7 +44,8 @@ export default async function handler(req, res) {
     const out = [];
     let after = null;
 
-    for (let page = 0; page < 5 && out.length < CANDLE_TARGET; page++) {
+    const target = CANDLE_TARGETS[bar] ?? 300;
+    for (let page = 0; page < 5 && out.length < target; page++) {
       const params = new URLSearchParams({ instId, bar, limit: '300' });
       if (after != null) params.set('after', String(after));
       const data = await fetchJson(`https://www.okx.com/api/v5/market/candles?${params.toString()}`);
@@ -60,7 +61,7 @@ export default async function handler(req, res) {
     const unique = new Map(out.map(row => [String(row[0]), row]));
     return [...unique.values()]
       .sort((a, b) => Number(a[0]) - Number(b[0]))
-      .slice(-CANDLE_TARGET);
+      .slice(-target);
   };
 
   // Keep candles in ascending chronological order. The previous reverse()
