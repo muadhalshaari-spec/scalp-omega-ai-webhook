@@ -29,6 +29,7 @@ export default async function handler(req,res){
   if(!auth.configured)return res.status(503).json({ok:false,error:'TradingView webhook secret is not configured; webhook is fail-closed.'});
   if(!auth.ok)return res.status(401).json({ok:false,error:'Invalid webhook secret'});
 
+  const alert=parseBody(req);
   const jobId=crypto.randomUUID();
   const base=`https://${req.headers.host}`;
   const payload={jobId,alert,receivedAt:new Date().toISOString(),source:'TRADINGVIEW'};
