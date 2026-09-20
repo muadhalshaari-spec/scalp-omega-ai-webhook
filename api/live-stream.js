@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
+import { insertLiquidationEvents } from '../lib/supabase.js';
 
 export const config = {
   maxDuration: 300
@@ -7,6 +8,7 @@ export const config = {
 
 const OKX_PUBLIC_WS = 'wss://ws.okx.com:8443/ws/v5/public';
 const OKX_BUSINESS_WS = 'wss://ws.okx.com:8443/ws/v5/business';
+const BINANCE_LIQUIDATION_WS = 'wss://fstream.binance.com/ws/ethusdt@forceOrder';
 const INST_ID = 'ETH-USDT-SWAP';
 const TIMEFRAMES = ['1m', '5m', '15m', '1H', '4H', '1D'];
 const REQUIRED_CANDLE_AGE_MS = 180_000;
@@ -14,6 +16,8 @@ const LIVE_WAIT_MS = 8_000;
 
 let okxPublic = null;
 let okxBusiness = null;
+let binanceLiquidation = null;
+let liquidationReconnectTimer = null;
 let reconnectTimer = null;
 let heartbeatTimer = null;
 const readyWaiters = new Set();
@@ -29,6 +33,8 @@ const state = {
   updatedAt: null,
   ticker: null,
   latestTrade: null,
+  liquidations: [],
+  liquidationFeed: { connected: false, updatedAt: null, received: 0, persisted: 0 },
   orderBook: null,
   candles: Object.fromEntries(TIMEFRAMES.map(tf => [tf, null])),
   candleUpdatedAt: Object.fromEntries(TIMEFRAMES.map(tf => [tf, null])),
@@ -130,6 +136,7 @@ function scheduleReconnect() {
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connectOKX();
+connectBinanceLiquidation();
   }, 1500);
 }
 
@@ -230,6 +237,82 @@ function connectSocket(url, args, kind) {
   ws.on('error', () => {
     try { ws.close(); } catch {}
   });
+}
+
+function normalizeLiquidation(msg) {
+  const o = msg?.o || {};
+  const price = Number(o.p || o.ap);
+  const qty = Number(o.q || o.z || o.origQty);
+  const ts = Number(msg?.E || o.T || Date.now());
+  if (![price, qty, ts].every(Number.isFinite)) return null;
+  const orderSide = String(o.S || '').toUpperCase();
+  const positionSide = String(o.ps || '').toUpperCase();
+  const liquidationPosition = positionSide === 'LONG' || positionSide === 'SHORT'
+    ? positionSide
+    : orderSide === 'SELL' ? 'LONG_LIQUIDATION'
+    : orderSide === 'BUY' ? 'SHORT_LIQUIDATION'
+    : 'UNKNOWN';
+  return {
+    id: `binance:${o.s || 'ETHUSDT'}:${o.i || o.c || ts}:${price}`,
+    timestamp: ts,
+    price,
+    size: Math.abs(qty),
+    notional: price * Math.abs(qty),
+    side: orderSide,
+    positionSide,
+    liquidationPosition,
+    source: 'BINANCE_FORCE_ORDER_STREAM'
+  };
+}
+
+function scheduleLiquidationReconnect() {
+  if (liquidationReconnectTimer) return;
+  liquidationReconnectTimer = setTimeout(() => {
+    liquidationReconnectTimer = null;
+    connectBinanceLiquidation();
+  }, 1500);
+}
+
+function connectBinanceLiquidation() {
+  if (binanceLiquidation?.readyState === WebSocket.OPEN || binanceLiquidation?.readyState === WebSocket.CONNECTING) return;
+  const ws = new WebSocket(BINANCE_LIQUIDATION_WS, { handshakeTimeout: 10000, perMessageDeflate: false });
+  binanceLiquidation = ws;
+  ws.on('open', () => {
+    state.liquidationFeed.connected = true;
+    state.liquidationFeed.updatedAt = new Date().toISOString();
+    broadcast();
+  });
+  ws.on('message', raw => {
+    try {
+      const event = normalizeLiquidation(JSON.parse(raw.toString()));
+      if (!event) return;
+      state.liquidations = [event, ...state.liquidations].slice(0, 200);
+      state.liquidationFeed.received += 1;
+      state.liquidationFeed.updatedAt = new Date().toISOString();
+      void insertLiquidationEvents([{
+        id: event.id,
+        event_ts: new Date(event.timestamp).toISOString(),
+        instrument: 'ETHUSDT',
+        price: event.price,
+        qty: event.size,
+        notional: event.notional,
+        side: event.liquidationPosition,
+        source: event.source,
+        raw: event
+      }]).then(r => {
+        if (r?.persisted) state.liquidationFeed.persisted += 1;
+      }).catch(() => {});
+      broadcast();
+    } catch {}
+  });
+  ws.on('close', () => {
+    if (binanceLiquidation === ws) binanceLiquidation = null;
+    state.liquidationFeed.connected = false;
+    state.liquidationFeed.updatedAt = new Date().toISOString();
+    broadcast();
+    scheduleLiquidationReconnect();
+  });
+  ws.on('error', () => { try { ws.close(); } catch {} });
 }
 
 function connectOKX() {
