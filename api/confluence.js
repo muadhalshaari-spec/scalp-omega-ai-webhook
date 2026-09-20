@@ -302,6 +302,7 @@ export default async function handler(req, res) {
     const book = bookData.data?.[0] || null;
     const orderBook = book ? {
       time: Number(book.ts),
+      seqId: Number(book.seqId),
       bids: (book.bids || []).map((x) => ({
         price: Number(x[0]),
         size: Number(x[1]),
@@ -327,18 +328,19 @@ export default async function handler(req, res) {
     );
 
     const base15m = candles['15m'] || [];
-    const derivativesData = await fetchDerivativeData({
-      instId,
-      begin: base15m[0]?.time ?? null,
-      end: base15m.at(-1)?.time ?? null,
-      mode: 'live',
-      signal: controller.signal
-    });
+    const [derivativesData, externalIntelligence] = await Promise.all([
+      fetchDerivativeData({
+        instId,
+        begin: base15m[0]?.time ?? null,
+        end: base15m.at(-1)?.time ?? null,
+        mode: 'live',
+        signal: controller.signal
+      }).catch(() => ({ current: {}, history: { oi: [], funding: [], longShort: [], takerVolume: [] } })),
+      fetchExternalIntelligence({ symbol: 'ETHUSDT', signal: controller.signal }).catch(() => ({ ok:false, providers:{}, crossExchange:{agreement:'UNAVAILABLE'}, dataQuality:{status:'FAILED'} }))
+    ]);
 
     const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
-
-    const externalIntelligence = await fetchExternalIntelligence({ symbol: 'ETHUSDT', signal: controller.signal }).catch(() => ({ ok:false, providers:{}, crossExchange:{agreement:'UNAVAILABLE'} }));
 
     const market = {
       price: ticker ? Number(ticker.last) : null,
