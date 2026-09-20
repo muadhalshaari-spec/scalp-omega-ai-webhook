@@ -61,3 +61,20 @@ alter table public.titan_snapshots enable row level security;
 alter table public.titan_features enable row level security;
 alter table public.titan_outcomes enable row level security;
 alter table public.titan_system_events enable row level security;
+
+create table if not exists public.titan_liquidations (
+  id text primary key,
+  event_ts timestamptz not null,
+  instrument text not null,
+  price numeric not null,
+  qty numeric not null default 0,
+  notional numeric not null default 0,
+  side text,
+  source text not null,
+  raw jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists titan_liquidations_event_ts_idx on public.titan_liquidations (event_ts desc);
+create index if not exists titan_liquidations_instrument_ts_idx on public.titan_liquidations (instrument, event_ts desc);
+alter table public.titan_liquidations enable row level security;
+
