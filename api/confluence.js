@@ -3,6 +3,7 @@ import { buildConfluence } from '../lib/confluence-engine.js';
 import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 import { fetchDerivativeData } from '../lib/derivatives-data.js';
 import { fetchExternalIntelligence } from '../lib/external-intelligence.js';
+import { getRecentLiquidations } from '../lib/supabase.js';
 
 export const maxDuration = 60;
 
@@ -111,21 +112,10 @@ export default async function handler(req, res) {
     })).filter(x=>[x.timestamp,x.open,x.high,x.low,x.close].every(Number.isFinite));
   };
 
-  const fetchBinanceLiquidations = async () => {
+  const fetchPersistedLiquidations = async () => {
     try {
-      const r = await fetch('https://fapi.binance.com/fapi/v1/allForceOrders?symbol=ETHUSDT&limit=100', {
-        headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-Liquidation/1.0' },
-        cache:'no-store',
-        signal: controller.signal
-      });
-      const text = await r.text();
-      const data = JSON.parse(text);
-      if (!r.ok || !Array.isArray(data)) return [];
-      return data.map((x)=>({
-        timestamp:Number(x.time), price:Number(x.price), size:Number(x.origQty),
-        notional:Number(x.averagePrice||x.price)*Number(x.origQty||0),
-        side:String(x.side||'').toUpperCase(), source:'BINANCE_FORCE_ORDER'
-      })).filter((x)=>Number.isFinite(x.timestamp)&&Number.isFinite(x.price));
+      const result = await getRecentLiquidations({ limit: 200, sinceMs: 60 * 60 * 1000 });
+      return result.rows || [];
     } catch {
       return [];
     }
@@ -289,7 +279,7 @@ export default async function handler(req, res) {
       bars.map(async (bar) => [bar, normalize(await fetchCandles(bar))])
     );
 
-    const [tickerData, oiData, fundingData, bookData, tradesData, binanceKlinesResult, binanceLiquidationsResult, deribitKlinesResult] = await Promise.all([
+    const [tickerData, bookData, tradesData, binanceKlinesResult, persistedLiquidationsResult, deribitKlinesResult] = await Promise.all([
       fetchJson(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`),
@@ -364,8 +354,8 @@ export default async function handler(req, res) {
         ...(deribitKlinesResult?.ok && Array.isArray(deribitKlinesResult.value) && deribitKlinesResult.value.length
           ? { DERIBIT: deribitKlinesResult.value } : {})
       },
-      liquidations: binanceLiquidationsResult?.ok ? (binanceLiquidationsResult.value || []) : [],
-      liquidationHistory: binanceLiquidationsResult?.ok ? (binanceLiquidationsResult.value || []) : [],
+      liquidations: persistedLiquidationsResult?.ok ? (persistedLiquidationsResult.value || []) : [],
+      liquidationHistory: persistedLiquidationsResult?.ok ? (persistedLiquidationsResult.value || []) : [],
       instrument: instId,
       externalIntelligence
     };
