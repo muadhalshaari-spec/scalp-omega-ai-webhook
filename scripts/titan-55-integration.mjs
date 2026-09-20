@@ -1,7 +1,7 @@
 import { TITAN_MODULES, runTitanPipeline, titanSelfTest } from "../lib/titan/index.js";
 
 const T=Date.now()-60000;
-const mkCandle=(i,mult=1)=>{const base=1800+i*.7*mult;const wig=Math.sin(i/7)*12;return{timestamp:T-(300-i)*900000,open:base+wig,high:base+wig+8+Math.abs(Math.sin(i))*5,low:base+wig-8-Math.abs(Math.cos(i))*5,close:base+wig+2,volume:1000+Math.abs(Math.sin(i/5))*700}};
+const mkCandle=(i,mult=1)=>{const base=1800+i*.7*mult;const wig=Math.sin(i/7)*12;return{timestamp:T-(300-i)*900000,open:base+wig,high:base+wig+8+Math.abs(Math.sin(i))*5,low:base+wig-8-Math.abs(Math.cos(i))*5,close:base+wig+2,volume:1000+Math.abs(Math.sin(i/5))*700,confirmed:true}};
 const candles15m=Array.from({length:300},(_,i)=>mkCandle(i,1)),candles1h=Array.from({length:120},(_,i)=>({...mkCandle(i,0.25),timestamp:T-(120-i)*3600000})),candles4h=Array.from({length:90},(_,i)=>({...mkCandle(i,0.1),timestamp:T-(90-i)*14400000})),candles1d=Array.from({length:90},(_,i)=>({...mkCandle(i,0.04),timestamp:T-(90-i)*86400000}));
 const px=candles15m.at(-1).close;
 const bids=Array.from({length:20},(_,i)=>[px-0.5-i*0.5,100-i*2]),asks=Array.from({length:20},(_,i)=>[px+0.5+i*0.5,98-i*2]);
