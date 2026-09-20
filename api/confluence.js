@@ -77,7 +77,7 @@ export default async function handler(req, res) {
     if (!r.ok || !Array.isArray(data)) throw new Error('Binance klines unavailable');
     return data.map((x) => ({
       timestamp:Number(x[0]), open:Number(x[1]), high:Number(x[2]), low:Number(x[3]),
-      close:Number(x[4]), volume:Number(x[5]), confirmed:Number(x[6])+Number(x[0])<=Date.now()
+      close:Number(x[4]), volume:Number(x[5]), confirmed:Number(x[6])<Date.now()
     })).filter((x)=>[x.timestamp,x.open,x.high,x.low,x.close].every(Number.isFinite));
   };
 
