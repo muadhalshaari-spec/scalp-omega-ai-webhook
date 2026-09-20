@@ -32,6 +32,29 @@ export default async function handler(req,res){
   const jobId=crypto.randomUUID();
   const base=`https://${req.headers.host}`;
   const payload={jobId,alert,receivedAt:new Date().toISOString(),source:'TRADINGVIEW'};
+  const qstashToken=process.env.QSTASH_TOKEN;
+  const qstashDestination=process.env.QSTASH_DESTINATION_URL || `https://${req.headers.host}/api/process-signal`;
+  if(qstashToken){
+    try{
+      const qstashHeaders={
+        Authorization:`Bearer ${qstashToken}`,
+        'Content-Type':'application/json',
+        'Upstash-Retries':'3',
+        'Upstash-Timeout':'15s',
+        'Upstash-Content-Based-Deduplication':'true'
+      };
+      if(process.env.SIGNAL_PROCESS_SECRET)qstashHeaders['Upstash-Forward-x-signal-process-secret']=process.env.SIGNAL_PROCESS_SECRET;
+      const qr=await fetch(`https://qstash.upstash.io/v2/publish/${encodeURIComponent(qstashDestination)}`,{
+        method:'POST',headers:qstashHeaders,body:JSON.stringify(payload),cache:'no-store'
+      });
+      if(!qr.ok)throw new Error(`QStash HTTP ${qr.status}`);
+      const qdata=await qr.json().catch(()=>({}));
+      return res.status(202).json({ok:true,accepted:true,queued:true,jobId,receivedAt:payload.receivedAt,webhookAuthenticated:true,queue:'QSTASH',messageId:qdata.messageId||null,processor:'/api/process-signal',execution:'qstash'});
+    }catch(e){
+      // Fail closed for the queue path: do not silently downgrade if QStash is configured.
+      return res.status(502).json({ok:false,error:'QStash publish failed',detail:e?.message||String(e)});
+    }
+  }
 
   waitUntil((async()=>{
     try{
