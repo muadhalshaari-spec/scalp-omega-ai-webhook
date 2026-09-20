@@ -21,6 +21,8 @@ if(contractWarnings.length)throw new Error("TITAN_MISSING_INPUT_CONTRACTS_"+cont
 const serialized=JSON.stringify(run);
 if(typeof serialized!=="string"||serialized.length<1000)throw new Error("TITAN_SERIALIZATION_FAILED");
 if(run.summary?.contractWarnings!==0)throw new Error("TITAN_SUMMARY_CONTRACT_WARNINGS");
+if(run.summary?.dependencyViolations!==0)throw new Error("TITAN_DEPENDENCY_VIOLATIONS");
+if(run.summary?.failedModules!==0)throw new Error("TITAN_RUNTIME_MODULE_FAILURES");
 for(const n of [21,23,25,26,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55]){const r=run.outputs["TITAN-"+String(n).padStart(2,"0")];if(!r||!r.result)throw new Error("MISSING_MODULE_"+n)}
 const lookaheadRun=runTitanPipeline({...base,candles:[...candles15m,{...candles15m.at(-1),timestamp:T+900000}]});const lookahead=lookaheadRun.outputs["TITAN-14"]?.diagnostics?.errors||[];if(!lookahead.includes("LOOKAHEAD_VIOLATION"))throw new Error("LOOKAHEAD_TEST_FAILED");if(lookaheadRun.decision!=="NO_TRADE")throw new Error("LOOKAHEAD_DID_NOT_BLOCK");
 console.log(JSON.stringify({ok:true,moduleCount:Object.keys(run.outputs).length,decision:run.decision,blockers:run.blockers,summary:run.summary}));
