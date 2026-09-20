@@ -14,7 +14,8 @@ export default async function handler(req, res) {
 
   const instId = 'ETH-USDT-SWAP';
   const bars = ['1m', '5m', '15m', '1H', '4H', '1D'];
-  // AI data feed: collect 1000 candles for every timeframe.\n  const CANDLE_TARGETS = Object.freeze({ '1m': 1000, '5m': 1000, '15m': 1000, '1H': 1000, '4H': 1000, '1D': 1000 });
+  // AI data feed: collect 1000 candles for every timeframe.
+  const CANDLE_TARGETS = Object.freeze({ '1m': 1000, '5m': 1000, '15m': 1000, '1H': 1000, '4H': 1000, '1D': 1000 });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 55_000);
 
