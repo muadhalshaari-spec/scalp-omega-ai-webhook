@@ -25,6 +25,7 @@ export default async function handler(req,res){
   });
   if(req.method!=='POST')return res.status(405).json({ok:false,error:'Method not allowed'});
   const auth=authorized(req);
+  if(!auth.configured)return res.status(503).json({ok:false,error:'TradingView webhook secret is not configured; webhook is fail-closed.'});
   if(!auth.ok)return res.status(401).json({ok:false,error:'Invalid webhook secret'});
 
   const alert=parseBody(req);
