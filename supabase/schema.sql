@@ -78,3 +78,16 @@ create index if not exists titan_liquidations_event_ts_idx on public.titan_liqui
 create index if not exists titan_liquidations_instrument_ts_idx on public.titan_liquidations (instrument, event_ts desc);
 alter table public.titan_liquidations enable row level security;
 
+-- Keep all persistence tables private to service-role access.
+drop policy if exists signal_events_deny_all on public.signal_events;
+create policy signal_events_deny_all on public.signal_events for all using (false) with check (false);
+drop policy if exists titan_snapshots_deny_all on public.titan_snapshots;
+create policy titan_snapshots_deny_all on public.titan_snapshots for all using (false) with check (false);
+drop policy if exists titan_features_deny_all on public.titan_features;
+create policy titan_features_deny_all on public.titan_features for all using (false) with check (false);
+drop policy if exists titan_outcomes_deny_all on public.titan_outcomes;
+create policy titan_outcomes_deny_all on public.titan_outcomes for all using (false) with check (false);
+drop policy if exists titan_system_events_deny_all on public.titan_system_events;
+create policy titan_system_events_deny_all on public.titan_system_events for all using (false) with check (false);
+drop policy if exists titan_liquidations_deny_all on public.titan_liquidations;
+create policy titan_liquidations_deny_all on public.titan_liquidations for all using (false) with check (false);
