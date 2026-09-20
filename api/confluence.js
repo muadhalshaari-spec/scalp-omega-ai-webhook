@@ -3,6 +3,7 @@ import { buildConfluence } from '../lib/confluence-engine.js';
 import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 import { fetchDerivativeData } from '../lib/derivatives-data.js';
 import { fetchExternalIntelligence } from '../lib/external-intelligence.js';
+import { getRecentLiquidations } from '../lib/supabase.js';
 
 export const maxDuration = 60;
 
@@ -13,7 +14,7 @@ export default async function handler(req, res) {
 
   const instId = 'ETH-USDT-SWAP';
   const bars = ['1m', '5m', '15m', '1H', '4H', '1D'];
-  const CANDLE_TARGET = 1000;
+  const CANDLE_TARGETS = Object.freeze({ '1m': 300, '5m': 300, '15m': 800, '1H': 300, '4H': 300, '1D': 300 });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 55_000);
 
@@ -44,7 +45,8 @@ export default async function handler(req, res) {
     const out = [];
     let after = null;
 
-    for (let page = 0; page < 5 && out.length < CANDLE_TARGET; page++) {
+    const target = CANDLE_TARGETS[bar] ?? 300;
+    for (let page = 0; page < 5 && out.length < target; page++) {
       const params = new URLSearchParams({ instId, bar, limit: '300' });
       if (after != null) params.set('after', String(after));
       const data = await fetchJson(`https://www.okx.com/api/v5/market/candles?${params.toString()}`);
@@ -60,11 +62,65 @@ export default async function handler(req, res) {
     const unique = new Map(out.map(row => [String(row[0]), row]));
     return [...unique.values()]
       .sort((a, b) => Number(a[0]) - Number(b[0]))
-      .slice(-CANDLE_TARGET);
+      .slice(-target);
   };
 
   // Keep candles in ascending chronological order. The previous reverse()
   // made featurePack() select the oldest closed candle instead of the latest.
+  const fetchBinanceKlines = async () => {
+    const url = 'https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=15m&limit=300';
+    const r = await fetch(url, {
+      headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-CrossExchange/1.0' },
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    const text = await r.text();
+    const data = JSON.parse(text);
+    if (!r.ok || !Array.isArray(data)) throw new Error('Binance klines unavailable');
+    return data.map((x) => ({
+      timestamp:Number(x[0]), open:Number(x[1]), high:Number(x[2]), low:Number(x[3]),
+      close:Number(x[4]), volume:Number(x[5]), confirmed:Number(x[6])<Date.now()
+    })).filter((x)=>[x.timestamp,x.open,x.high,x.low,x.close].every(Number.isFinite));
+  };
+
+  const fetchDeribitKlines = async () => {
+    const end = Date.now();
+    const start = end - 300 * 15 * 60 * 1000;
+    const qs = new URLSearchParams({
+      instrument_name: 'ETH-PERPETUAL',
+      start_timestamp: String(start),
+      end_timestamp: String(end),
+      resolution: '15'
+    });
+    const r = await fetch('https://www.deribit.com/api/v2/public/get_tradingview_chart_data?' + qs.toString(), {
+      headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-Deribit/1.0' },
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    const text = await r.text();
+    const data = JSON.parse(text);
+    if (!r.ok || data?.error || !data?.result?.ticks?.length) throw new Error('Deribit chart data unavailable');
+    const v = data.result;
+    return v.ticks.map((ts,i)=>({
+      timestamp:Number(ts),
+      open:Number(v.open?.[i]),
+      high:Number(v.high?.[i]),
+      low:Number(v.low?.[i]),
+      close:Number(v.close?.[i]),
+      volume:Number(v.volume?.[i] ?? 0),
+      confirmed:Number(ts) < end
+    })).filter(x=>[x.timestamp,x.open,x.high,x.low,x.close].every(Number.isFinite));
+  };
+
+  const fetchPersistedLiquidations = async () => {
+    try {
+      const result = await getRecentLiquidations({ limit: 200, sinceMs: 60 * 60 * 1000 });
+      return result.rows || [];
+    } catch {
+      return [];
+    }
+  };
+
   const normalize = (rows) => rows.map((c) => ({
     time: Number(c[0]),
     open: Number(c[1]),
@@ -223,17 +279,19 @@ export default async function handler(req, res) {
       bars.map(async (bar) => [bar, normalize(await fetchCandles(bar))])
     );
 
-    const [tickerData, oiData, fundingData, bookData, tradesData] = await Promise.all([
+    const [tickerData, bookData, tradesData, binanceKlinesResult, persistedLiquidationsResult, deribitKlinesResult] = await Promise.all([
       fetchJson(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`),
-      fetchJson(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${instId}`),
-      fetchJson(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`),
       fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`),
-      fetchJson(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`)
+      fetchJson(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`),
+      Promise.resolve(fetchBinanceKlines()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error})),
+      Promise.resolve(fetchPersistedLiquidations()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error})),
+      Promise.resolve(fetchDeribitKlines()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error}))
     ]);
 
     const book = bookData.data?.[0] || null;
     const orderBook = book ? {
       time: Number(book.ts),
+      seqId: Number(book.seqId),
       bids: (book.bids || []).map((x) => ({
         price: Number(x[0]),
         size: Number(x[1]),
@@ -259,18 +317,19 @@ export default async function handler(req, res) {
     );
 
     const base15m = candles['15m'] || [];
-    const derivativesData = await fetchDerivativeData({
-      instId,
-      begin: base15m[0]?.time ?? null,
-      end: base15m.at(-1)?.time ?? null,
-      mode: 'live',
-      signal: controller.signal
-    });
+    const [derivativesData, externalIntelligence] = await Promise.all([
+      fetchDerivativeData({
+        instId,
+        begin: base15m[0]?.time ?? null,
+        end: base15m.at(-1)?.time ?? null,
+        mode: 'live',
+        signal: controller.signal
+      }).catch(() => ({ current: {}, history: { oi: [], funding: [], longShort: [], takerVolume: [] } })),
+      fetchExternalIntelligence({ symbol: 'ETHUSDT', signal: controller.signal }).catch(() => ({ ok:false, providers:{}, crossExchange:{agreement:'UNAVAILABLE'}, dataQuality:{status:'FAILED'} }))
+    ]);
 
     const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
-
-    const externalIntelligence = await fetchExternalIntelligence({ symbol: 'ETHUSDT', signal: controller.signal }).catch(() => ({ ok:false, providers:{}, crossExchange:{agreement:'UNAVAILABLE'} }));
 
     const market = {
       price: ticker ? Number(ticker.last) : null,
@@ -286,6 +345,15 @@ export default async function handler(req, res) {
       takerVolumeHistory: derivativesData.history.takerVolume,
       orderBook,
       trades: tradesData.data || [],
+      candlesByExchange: {
+        OKX: candles['15m'] || [],
+        ...(binanceKlinesResult?.ok && Array.isArray(binanceKlinesResult.value) && binanceKlinesResult.value.length
+          ? { BINANCE: binanceKlinesResult.value } : {}),
+        ...(deribitKlinesResult?.ok && Array.isArray(deribitKlinesResult.value) && deribitKlinesResult.value.length
+          ? { DERIBIT: deribitKlinesResult.value } : {})
+      },
+      liquidations: persistedLiquidationsResult?.ok ? (persistedLiquidationsResult.value || []) : [],
+      liquidationHistory: persistedLiquidationsResult?.ok ? (persistedLiquidationsResult.value || []) : [],
       instrument: instId,
       externalIntelligence
     };
@@ -310,6 +378,40 @@ export default async function handler(req, res) {
       candleResults.map(([bar, data]) => [bar, data.filter((c) => c.confirmed).at(-1)?.time ?? null])
     );
 
+    const fullInstitutional = String(req.query?.full ?? '') === '1';
+    const compactTitan = institutional?.titan ? {
+      engine: institutional.titan.engine,
+      version: institutional.titan.version,
+      decision: institutional.titan.decision,
+      baseDecision: institutional.titan.baseDecision,
+      supportDirection: institutional.titan.supportDirection,
+      blocked: institutional.titan.blocked,
+      blockers: institutional.titan.blockers,
+      score: institutional.titan.score,
+      confidence: institutional.titan.confidence,
+      summary: institutional.titan.summary,
+      traces: (institutional.titan.traces || []).map((t) => ({
+        index:t.index,id:t.id,status:t.status,direction:t.direction,score:t.score,
+        confidence:t.confidence,blockers:t.blockers || []
+      })),
+      moduleStates: Object.fromEntries(Object.entries(institutional.titan.outputs || {}).map(([id,o]) => [id,{
+        status:o.state?.status,
+        direction:o.state?.direction,
+        score:o.state?.score,
+        confidence:o.state?.confidence,
+        blockers:o.state?.blockers || [],
+        errors:o.diagnostics?.errors || [],
+        warnings:o.diagnostics?.warnings || [],
+        gates:o.state?.gates || {},
+        metrics:o.result?.metrics || {}
+      }]))
+    } : null;
+
+    const apiInstitutional = {
+      ...institutional,
+      titan: fullInstitutional ? institutional.titan : compactTitan
+    };
+
     const payload = {
       ok: true,
       engine: 'SCALP-Ω Confluence Engine v1',
@@ -320,7 +422,7 @@ export default async function handler(req, res) {
       market,
       externalIntelligence,
       confluence,
-      institutional,
+      institutional: apiInstitutional,
       dataQuality: {
         candlesPerTimeframe: Object.fromEntries(
           candleResults.map(([bar, data]) => [bar, data.length])

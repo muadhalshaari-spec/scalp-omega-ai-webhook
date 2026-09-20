@@ -1,20 +1,47 @@
 import { TITAN_MODULES, runTitanPipeline, titanSelfTest } from "../lib/titan/index.js";
 
 const T=Date.now()-60000;
-const mkCandle=(i,mult=1)=>{const base=1800+i*.7*mult;const wig=Math.sin(i/7)*12;return{timestamp:T-300000+(i*900000),open:base+wig,high:base+wig+8+Math.abs(Math.sin(i))*5,low:base+wig-8-Math.abs(Math.cos(i))*5,close:base+wig+2,volume:1000+Math.abs(Math.sin(i/5))*700}};
-const candles15m=Array.from({length:300},(_,i)=>mkCandle(i,1)),candles1h=Array.from({length:120},(_,i)=>({...mkCandle(i,0.25),timestamp:T-3600000+(i*3600000)})),candles4h=Array.from({length:90},(_,i)=>({...mkCandle(i,0.1),timestamp:T-14400000+(i*14400000)})),candles1d=Array.from({length:90},(_,i)=>({...mkCandle(i,0.04),timestamp:T-86400000+(i*86400000)}));
+const mkCandle=(i,mult=1)=>{const base=1800+i*.7*mult;const wig=Math.sin(i/7)*12;return{timestamp:T-(300-i)*900000,open:base+wig,high:base+wig+8+Math.abs(Math.sin(i))*5,low:base+wig-8-Math.abs(Math.cos(i))*5,close:base+wig+2,volume:1000+Math.abs(Math.sin(i/5))*700,confirmed:true}};
+const candles15m=Array.from({length:300},(_,i)=>mkCandle(i,1)),candles1h=Array.from({length:120},(_,i)=>({...mkCandle(i,0.25),timestamp:T-(120-i)*3600000})),candles4h=Array.from({length:90},(_,i)=>({...mkCandle(i,0.1),timestamp:T-(90-i)*14400000})),candles1d=Array.from({length:90},(_,i)=>({...mkCandle(i,0.04),timestamp:T-(90-i)*86400000}));
 const px=candles15m.at(-1).close;
 const bids=Array.from({length:20},(_,i)=>[px-0.5-i*0.5,100-i*2]),asks=Array.from({length:20},(_,i)=>[px+0.5+i*0.5,98-i*2]);
 const trades=Array.from({length:250},(_,i)=>({timestamp:T-60000+i*200,price:px+(i%9-4)*.3,size:5+(i%7),side:i%2?"buy":"sell"}));
 const derivatives={oiHistory:Array.from({length:40},(_,i)=>({timestamp:T-3600000+i*90000,oi:100000+i*50})),fundingHistory:Array.from({length:40},(_,i)=>({timestamp:T-3600000+i*90000,fundingRate:0.0001+(i%5)*.00001})),oiSignal:.55};
-const options={options:Array.from({length:30},(_,i)=>({strike:px+(i-15)*10,openInterest:1000+i*20})),iv:Array.from({length:20},(_,i)=>.55+i*.002),skew:Array.from({length:20},(_,i)=>-.03+i*.001),expiries:[{expiry:"2026-10-01",openInterest:5000},{expiry:"2026-11-01",openInterest:4000},{expiry:"2026-12-01",openInterest:3000}],strikes:Array.from({length:30},(_,i)=>({strike:px+(i-15)*10,openInterest:1000+i*20}))};
+const optionExpiries=["25SEP26","30OCT26","27NOV26","25DEC26"];
+const makeOption=(i)=>{
+  const expiry=optionExpiries[i%optionExpiries.length];
+  const strike=Math.round(px+(i%24-12)*25);
+  const side=i%2?"P":"C";
+  return {instrument:`ETH-${expiry}-${strike}-${side}`,strike,openInterest:1000+i*20,markIv:.52+(i%12)*.004};
+};
+const optionRows=Array.from({length:48},(_,i)=>makeOption(i));
+const options={options:optionRows,iv:Array.from({length:24},(_,i)=>.52+i*.003),skew:[],expiries:optionExpiries,strikes:optionRows};
 const liquidations=Array.from({length:50},(_,i)=>({timestamp:T-1800000+i*30000,price:px+(i%10-5)*2,notional:1000+i*50,side:i%2?"LONG":"SHORT"}));
 const featureRows=Array.from({length:120},(_,i)=>({rsi:45+(i%20),volumeRatio:.8+(i%7)*.08,trend:(i%9-4)/10,atr:.02+i%5*.001}));
 const outcomes=featureRows.map((x,i)=>({timestamp:T-120*900000+i*900000,y:i%3?0:1}));
 const strategies=Array.from({length:120},(_,i)=>({a:Math.sin(i/8)*.02+(i%7===0?.04:0),b:Math.cos(i/11)*.015,c:(i%5===0?.025:-.005)}));
 const base={mode:"RESEARCH",timestamp:T,decisionTimestamp:T,sourceTimestamp:T-1,decision:"LONG",direction:"LONG",candles:candles15m,candles15m,candles5m:candles15m,candles1m:candles15m,candles1h,candles4h,candles1d,candlesByTf:{"15m":candles15m,"5m":candles15m,"1m":candles15m,"1H":candles1h,"4H":candles4h,"1D":candles1d},market:{price:px},orderbook:{bids,asks},trades,options,iv:options.iv,skew:options.skew,putCall:1,strikes:options.strikes,expiries:options.expiries,liquidations,liquidationHistory:liquidations,price:px,openInterest:100000,derivatives,oiHistory:derivatives.oiHistory,fundingHistory:derivatives.fundingHistory,takerVolumeHistory:Array.from({length:20},()=>({buyVol:100,sellVol:95})),longShortHistory:Array.from({length:20},()=>({longShortRatio:1.02})),structures:{"1H":{externalDirection:"BULLISH"},"4H":{externalDirection:"BULLISH"},"15m":{externalDirection:"BULLISH"}},structure:{externalDirection:"BULLISH"},regimes:{"1H":{trend:"UPTREND"},"4H":{trend:"UPTREND"}},regime:{trend:"UPTREND"},liquidity:{rangePosition:.35,sweep:"LOW"},zones:{activeFvg:{high:px+10,low:px+4,mid:px+7}},microstructure:{score:.72,aggression:.2},setup:{type:"TREND_PULLBACK",quality:.8,entryMode:"MARKET"},probability:.72,metaProbability:.7,analog:{probability:.69},ensemble:{probability:.71},eventRisk:{riskLevel:"LOW",tradeAllowed:true},sessionStats:{},risk:{entry:px,stopLoss:px-12,targets:[px+24,px+36,px+60],rr:2,maxRiskPrice:30,maxFraction:.01,allowed:true},executionPlan:{decision:"LONG",entry:px,stopLoss:px-12,targets:[px+24,px+36,px+60]},dataQuality:{ready:true},featureRows,outcomes,researchRows:strategies,strategyReturns:strategies,cases:[],equity:[100000,99950,100050],accountEquity:100050,account:{cash:100000,equity:100000},orders:[{id:"T1",type:"MARKET",side:"BUY",price:px,entry:px,qty:1,timestamp:T}],position:{state:"OPEN",direction:"LONG",entry:px,qty:1,stopLoss:px-12,openedAt:T-3600000},nextFundingTime:T+1800000,payload:{symbol:"ETH-USDT-SWAP",direction:"LONG",signal:"TEST"},secret:undefined,expectedSecret:undefined,timestamp:T};
+const o21=runTitanPipeline(base).outputs["TITAN-21"]?.result;
+if(!o21?.metrics?.expiryCurve || o21.metrics.expiryCurve.length<2)throw new Error("OPTIONS_TERM_STRUCTURE_TEST_FAILED");
+if(o21.skewState?.method!=="WING_IV")throw new Error("OPTIONS_WING_SKEW_TEST_FAILED");
+const o22=runTitanPipeline({...base,liquidations:[{timestamp:T-60000,price:px-2,notional:5000,side:"SELL"},{timestamp:T-30000,price:px+2,notional:3000,side:"BUY"},{timestamp:T-10000,price:px-1,notional:2500,side:"SELL"}],liquidationHistory:[]}).outputs["TITAN-22"]?.result;
+if(!(o22?.metrics?.longs>o22?.metrics?.shorts))throw new Error("LIQUIDATION_SIDE_NORMALIZATION_TEST_FAILED");
 const self=titanSelfTest();if(!self.passed||self.count!==55)throw new Error("TITAN_SELF_TEST_FAILED");
-const run=runTitanPipeline(base);if(Object.keys(run.outputs).length!==55)throw new Error("TITAN_PIPELINE_NOT_55");
+const run=runTitanPipeline(base);
+if(Object.keys(run.outputs).length!==55)throw new Error("TITAN_PIPELINE_NOT_55");
+const contractWarnings=Object.values(run.outputs).filter(x=>(x.diagnostics?.warnings||[]).some(w=>String(w).startsWith("MISSING_INPUTS:")));
+if(contractWarnings.length)throw new Error("TITAN_MISSING_INPUT_CONTRACTS_"+contractWarnings.map(x=>(x.module?.id||x.moduleId)+":"+((x.diagnostics?.warnings||[]).filter(w=>String(w).startsWith("MISSING_INPUTS:")).join("|"))).join(","));
+const serialized=JSON.stringify(run);
+if(typeof serialized!=="string"||serialized.length<1000)throw new Error("TITAN_SERIALIZATION_FAILED");
+if(run.summary?.contractWarnings!==0)throw new Error("TITAN_SUMMARY_CONTRACT_WARNINGS");
+if(run.summary?.dependencyViolations!==0)throw new Error("TITAN_DEPENDENCY_VIOLATIONS_"+JSON.stringify({summary:run.summary,blockers:run.blockers,traces:run.traces.filter(t=>(t.blockers||[]).length).slice(0,20)}));
+if(run.summary?.failedModules!==0)throw new Error("TITAN_RUNTIME_MODULE_FAILURES_"+JSON.stringify({summary:run.summary,failed:run.traces.filter(t=>(t.blockers||[]).length).slice(0,55)}));
 for(const n of [21,23,25,26,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55]){const r=run.outputs["TITAN-"+String(n).padStart(2,"0")];if(!r||!r.result)throw new Error("MISSING_MODULE_"+n)}
-const lookaheadRun=runTitanPipeline({...base,candles:[...candles15m,{...candles15m.at(-1),timestamp:T+900000}]});const lookahead=lookaheadRun.outputs["TITAN-14"]?.diagnostics?.errors||[];if(!lookahead.includes("LOOKAHEAD_VIOLATION"))throw new Error("LOOKAHEAD_TEST_FAILED");if(lookaheadRun.decision!=="NO_TRADE")throw new Error("LOOKAHEAD_DID_NOT_BLOCK");
+const futureCandles=[...candles15m,{...candles15m.at(-1),timestamp:T+900000,confirmed:true}];
+const lookaheadRun=runTitanPipeline({
+  ...base,
+  candles:futureCandles,
+  candles15m:futureCandles,
+  candlesByTf:{...base.candlesByTf,"15m":futureCandles}
+});const lookahead=lookaheadRun.outputs["TITAN-14"]?.diagnostics?.errors||[];if(!lookahead.includes("LOOKAHEAD_VIOLATION"))throw new Error("LOOKAHEAD_TEST_FAILED");if(lookaheadRun.decision!=="NO_TRADE")throw new Error("LOOKAHEAD_DID_NOT_BLOCK");
 console.log(JSON.stringify({ok:true,moduleCount:Object.keys(run.outputs).length,decision:run.decision,blockers:run.blockers,summary:run.summary}));
