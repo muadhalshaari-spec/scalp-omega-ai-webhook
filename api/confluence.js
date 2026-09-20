@@ -13,7 +13,7 @@ export default async function handler(req, res) {
 
   const instId = 'ETH-USDT-SWAP';
   const bars = ['1m', '5m', '15m', '1H', '4H', '1D'];
-  const CANDLE_TARGETS = Object.freeze({ '1m': 300, '5m': 300, '15m': 1000, '1H': 300, '4H': 300, '1D': 300 });
+  const CANDLE_TARGETS = Object.freeze({ '1m': 300, '5m': 300, '15m': 800, '1H': 300, '4H': 300, '1D': 300 });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 55_000);
 
@@ -67,7 +67,7 @@ export default async function handler(req, res) {
   // Keep candles in ascending chronological order. The previous reverse()
   // made featurePack() select the oldest closed candle instead of the latest.
   const fetchBinanceKlines = async () => {
-    const url = 'https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=15m&limit=500';
+    const url = 'https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=15m&limit=300';
     const r = await fetch(url, {
       headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-CrossExchange/1.0' },
       cache: 'no-store',
@@ -84,7 +84,7 @@ export default async function handler(req, res) {
 
   const fetchDeribitKlines = async () => {
     const end = Date.now();
-    const start = end - 500 * 15 * 60 * 1000;
+    const start = end - 300 * 15 * 60 * 1000;
     const qs = new URLSearchParams({
       instrument_name: 'ETH-PERPETUAL',
       start_timestamp: String(start),
