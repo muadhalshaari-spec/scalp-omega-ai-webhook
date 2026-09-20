@@ -1,36 +1,53 @@
 # SCALP-Ω AI Webhook
 
-SCALP-Ω is an institutional-style ETH-USDT-SWAP market intelligence and decision engine.
+SCALP-Ω is an ETH-USDT-SWAP market data and feature engine designed to feed a separate AI reasoning layer.
+
+## Decision architecture
+
+The live architecture is intentionally split:
+
+`market data → SCALP-Ω data/feature engine → ChatGPT (GPT-5.6 Luna) → trading decision`
+
+SCALP-Ω does not authorize, select, rank, or output a live trading decision. The final `LONG`, `SHORT`, or `NO_TRADE` decision is generated only by the ChatGPT analysis layer from the supplied evidence.
 
 ## Production endpoints
 
-- `GET /api/institutional` — institutional deterministic decision and derivative/event-risk state.
-- `GET /api/confluence` — multi-timeframe market/confluence data plus institutional analysis.
-- `GET /api/backtest?depth=5000` — historical institutional backtest with as-of derivative alignment, calibration, walk-forward, and overfitting diagnostics.
-- `GET /api/analyze` — AI reasoning layer. GPT explains the deterministic engine and may not override its decision.
-- `POST /api/webhook` — fast TradingView webhook receiver. It authenticates, acknowledges immediately, and schedules background institutional processing so the TradingView request is not held open.
-- `POST /api/process-signal` — background institutional processor. Returns the deterministic decision and executable plan (MARKET/LIMIT/STOP, entry zone, SL, TP1-3, R:R, expiry, cancellation conditions).
+- `GET /api/institutional` — data-only AI feed: 1000 candles per timeframe plus indicators, derivatives, order book, trades, liquidations, cross-exchange data, contexts, and data-quality metadata. No trading decision, entry, stop, target, probability, or risk-gate output.
+- `GET /api/confluence` — legacy/internal market-data pipeline retained for compatibility; the AI decision path does not use its deterministic decision output.
+- `GET /api/backtest?depth=5000` — historical research/backtest diagnostics.
+- `GET /api/analyze` — GPT-5.6 Luna reasoning and trading-decision layer. GPT independently decides LONG/SHORT/NO_TRADE from the data feed.
+- `POST /api/webhook` — fast TradingView webhook receiver. It authenticates, acknowledges immediately, and schedules background processing.
+- `POST /api/process-signal` — background data-processing/persistence route.
 - `GET /api/live-state` and `GET /api/live-stream` — realtime market state.
+
+## AI data feed contract
+
+The AI feed is explicitly marked with:
+
+- `decisionAuthority: CHATGPT_ONLY`
+- `decisionPolicy: NO_DECISION_OUTPUT`
+- `analysisMode: DATA_ONLY_CLOSED_CANDLES`
+
+The feed contains historical candles in ascending chronological order and exposes 1000 bars for each configured timeframe where the upstream exchange returns the requested history.
+
+## OpenAI
+
+Set the Vercel environment variable `OPENAI_API_KEY`. The `/api/analyze` endpoint sends the data feed and live market state to GPT-5.6 Luna. If OpenAI is unavailable or rate-limited, the endpoint returns an error and does not substitute a deterministic engine decision.
 
 ## Webhook authentication
 
-Set the Vercel environment variable `TV_WEBHOOK_SECRET` and send the same value in the `x-tradingview-secret` header. When the variable is not configured, the endpoint remains compatible but reports authentication as `not_configured`.
+Set the Vercel environment variable `TV_WEBHOOK_SECRET` and send the same value in the `x-tradingview-secret` header. When the variable is not configured, the endpoint reports authentication as `not_configured`.
 
 ## Research integrity
 
-The system uses closed-candle decision data and aligns historical derivatives strictly as-of each decision timestamp. TIMEOUT outcomes remain visible in performance statistics and are not converted into binary losses for calibration.
+Closed-candle information is used for structural confirmation to avoid lookahead. Historical derivative alignment is kept as-of the relevant decision timestamp in the research/backtest modules.
 
-The current research result is not a validated profitability claim or a guaranteed win rate. Scores and confidence fields are evidence-strength measures, not probabilities of winning.
-
-
-## Execution decision contract
-
-The institutional layer now separates prediction from execution. A trade is executable only when the deterministic gate returns LONG or SHORT. The execution plan can contain entry mode, entry price/zone, trigger condition, structural stop-loss, up to three targets, cost-adjusted R:R, expiry, cancellation conditions, and an evidence probability. A NO_TRADE result remains a valid and intentional outcome.
+Scores and confidence values are evidence-strength measures, not validated probabilities of winning.
 
 ## TradingView latency protection
 
-The webhook receiver does not wait for market analysis. It returns 202 with a jobId, then invokes the processor in the background using Vercel waitUntil. For durable delivery and retries beyond the serverless lifecycle, the next production hardening step is a persistent queue such as QStash or Inngest. The current waitUntil fallback is not a durable queue.
+The webhook receiver does not wait for market analysis. It returns 202 with a jobId, then invokes background processing using Vercel waitUntil. For durable retries beyond the serverless lifecycle, a persistent queue such as QStash or Inngest can be added later.
 
 ## Safety
 
-Set both TV_WEBHOOK_SECRET and SIGNAL_PROCESS_SECRET in Vercel production. Never place exchange withdrawal permissions or private API keys in TradingView alerts.
+Set both `TV_WEBHOOK_SECRET` and `SIGNAL_PROCESS_SECRET` in Vercel production. Never place exchange withdrawal permissions or private API keys in TradingView alerts.
