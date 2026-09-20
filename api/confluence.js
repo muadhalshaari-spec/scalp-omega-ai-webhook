@@ -7,6 +7,8 @@ import { getRecentLiquidations } from '../lib/supabase.js';
 
 export const maxDuration = 60;
 
+const DERIBIT_PUBLIC_BASE = (process.env.DERIBIT_BASE_URL || ((process.env.DERIBIT_ENV || 'testnet').toLowerCase() === 'production' ? 'https://www.deribit.com/api/v2' : 'https://test.deribit.com/api/v2')) + '/public';
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
@@ -93,7 +95,7 @@ export default async function handler(req, res) {
       end_timestamp: String(end),
       resolution: '15'
     });
-    const r = await fetch('https://www.deribit.com/api/v2/public/get_tradingview_chart_data?' + qs.toString(), {
+    const r = await fetch('${DERIBIT_PUBLIC_BASE}/get_tradingview_chart_data?' + qs.toString(), {
       headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-Deribit/1.0' },
       cache: 'no-store',
       signal: controller.signal
