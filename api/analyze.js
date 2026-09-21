@@ -72,9 +72,12 @@ function buildDecisionInput(dataFeed, liveData, previousMemory) {
   const market = dataFeed.market || {};
   const featureSummary = dataFeed.featureSummary || {};
   const features = Object.fromEntries(Object.entries(featureSummary).map(([tf,f]) => [tf, {
-    last:f?.lastCandle ? { time:f.lastCandle.time ?? null, open:f.lastCandle.open ?? null, high:f.lastCandle.high ?? null, low:f.lastCandle.low ?? null, close:f.lastCandle.close ?? null, volume:f.lastCandle.volume ?? null } : null,
-    indicators:f?.indicators ? { ema20:f.indicators.ema20 ?? null, ema50:f.indicators.ema50 ?? null, ema200:f.indicators.ema200 ?? null, rsi:f.indicators.rsi14 ?? null, atr:f.indicators.atr14 ?? null, vwap:f.indicators.vwap ?? null, macdHist:f.indicators.macdHistogram ?? null, volRatio:f.indicators.volumeRatio20 ?? null } : null,
-    momentum:f?.momentum ? { pct:f.momentum.priceChangePct1 ?? null, above20:f.momentum.aboveEma20 ?? null, above50:f.momentum.aboveEma50 ?? null, above200:f.momentum.aboveEma200 ?? null } : null
+    c:f?.lastCandle?.close ?? null,
+    i:f?.indicators ? {
+      e20:f.indicators.ema20 ?? null,e50:f.indicators.ema50 ?? null,e200:f.indicators.ema200 ?? null,
+      r:f.indicators.rsi14 ?? null,a:f.indicators.atr14 ?? null,m:f.indicators.macdHistogram ?? null,v:f.indicators.volumeRatio20 ?? null
+    } : null,
+    p:f?.momentum?.priceChangePct1 ?? null
   }]));
   const ext = dataFeed.externalIntelligence || {};
   const providers = Object.fromEntries(Object.entries(ext.providers || {}).map(([name,p]) => [name, p ? {
@@ -92,8 +95,8 @@ function buildDecisionInput(dataFeed, liveData, previousMemory) {
     market:{ price:market.price ?? null, openInterest:market.openInterest ?? null, fundingRate:market.fundingRate ?? null, nextFundingRate:market.nextFundingRate ?? null,
       bid:liveTicker.bid ?? liveTicker.bidPx ?? null, ask:liveTicker.ask ?? liveTicker.askPx ?? null, markPrice:liveTicker.markPrice ?? liveTicker.markPx ?? null,
       orderBookTop:book ? { bids:Array.isArray(book.bids)?book.bids.slice(0,1):[], asks:Array.isArray(book.asks)?book.asks.slice(0,1):[] } : null },
-    timeframes:features, external:{providers,crossExchange:ext.crossExchange ?? null,featureSignals:ext.featureSignals ?? null},
-    macro:{status:macro.status ?? null, latest:macroLatest},
+    timeframes:features, external:{providers,crossExchange:ext.crossExchange ?? null},
+    macro:{status:macro.status ?? null, latest:Object.fromEntries(Object.entries(macroLatest).map(([id,v])=>[id,v?.value ?? null]))},
     dataQuality:{ candlesPerTimeframe:dataFeed.dataQuality?.candlesPerTimeframe ?? {}, closedCandlesPerTimeframe:dataFeed.dataQuality?.closedCandlesPerTimeframe ?? {}, fred:dataFeed.dataQuality?.fred ?? null },
     realtime:{connected:liveData?.connected === true, updatedAt:liveData?.updatedAt ?? null, latestTrade:liveData?.latestTrade ?? null},
     memory:{upstashConfigured:previousMemory?.configured === true, cached:previousMemory?.value != null}
