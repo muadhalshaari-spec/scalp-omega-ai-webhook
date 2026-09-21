@@ -136,6 +136,23 @@ export default async function handler(req, res) {
     }
   };
 
+  const fetchPersistedExternalHistory = async () => {
+    const result = {};
+    for (const source of ['BINANCE', 'BYBIT']) {
+      result[source] = {};
+      for (const timeframe of bars) {
+        try {
+          const instrument = source === 'BINANCE' ? 'ETHUSDT' : 'ETHUSDT';
+          const rows = await getRecentMarketCandles({ source, instrument, timeframe, limit: 1000 });
+          result[source][timeframe] = rows.rows || [];
+        } catch {
+          result[source][timeframe] = [];
+        }
+      }
+    }
+    return result;
+  };
+
   const normalize = (rows) => rows.map((c) => ({
     time: Number(c[0]),
     open: Number(c[1]),
@@ -331,7 +348,7 @@ export default async function handler(req, res) {
     );
 
     const base15m = candles['15m'] || [];
-    const [derivativesData, externalIntelligence, macroContext] = await Promise.all([
+    const [derivativesData, externalIntelligence, macroContext, persistedExternalHistory] = await Promise.all([
       fetchDerivativeData({
         instId,
         begin: base15m[0]?.time ?? null,
@@ -340,8 +357,11 @@ export default async function handler(req, res) {
         signal: controller.signal
       }).catch(() => ({ current: {}, history: { oi: [], funding: [], longShort: [], takerVolume: [] } })),
       fetchExternalIntelligence({ symbol: 'ETHUSDT', signal: controller.signal }).catch(() => ({ ok:false, providers:{}, crossExchange:{agreement:'UNAVAILABLE'}, dataQuality:{status:'FAILED'} })),
-      fetchFredMacro()
+      fetchFredMacro(),
+      fetchPersistedExternalHistory()
     ]);
+
+    externalIntelligence.persistedHistory = persistedExternalHistory;
 
     const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
