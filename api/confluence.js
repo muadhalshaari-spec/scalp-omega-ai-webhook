@@ -394,7 +394,7 @@ export default async function handler(req, res) {
       } };
     }
 
-    externalIntelligence.persistedHistory = persistedExternalHistory;
+    externalIntelligence.persistedHistory = relayHistory;
 
     const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
