@@ -71,22 +71,24 @@ export default async function handler(req,res){
     const titan55 = {
       engine: titan.engine || 'SCALP-Ω TITAN 55',
       version: titan.version || '1.0.0',
-      decision: liveTitan.titanDecision || 'NO_TRADE',
-      deterministicDecision: liveTitan.deterministicDecision || 'NO_TRADE',
+      decision: null,
+      deterministicDecision: null,
       blocked: titan.blocked ?? true,
       blockers: titan.blockers || [],
       score: titan.score ?? null,
       confidence: titan.confidence ?? null,
       summary: titan.summary || null,
       moduleStatus,
-      chatgptAuthority: 'CHATGPT_ONLY'
+      chatgptAuthority: 'CHATGPT_ONLY',
+      decisionSource: 'CHATGPT',
+      systemDecisionEnabled: false
     };
 
     const persistencePayload = {
       timestamp: data.fetchedAt || new Date().toISOString(),
       instrument: data.instrument || 'ETH-USDT-SWAP',
-      decision: 'NO_TRADE',
-      titanDecision: titan55.decision,
+      decision: null,
+      titanDecision: null,
       blockers: titan55.blockers,
       summary: titan55.summary,
       moduleStatus
@@ -98,10 +100,10 @@ export default async function handler(req,res){
       featureSummary: data.featureSummary || {},
       dataQuality: data.dataQuality || {},
       market: { price: data.market?.price ?? null, openInterest: data.market?.openInterest ?? null, fundingRate: data.market?.fundingRate ?? null },
-      titan55: { decision: titan55.decision, score: titan55.score, confidence: titan55.confidence }
+      titan55: { decision: null, score: titan55.score, confidence: titan55.confidence }
     };
     const persistResults = await Promise.allSettled([
-      insertTitanSnapshot({ event_ts: persistAt, instrument: persistencePayload.instrument, decision: 'NO_TRADE', payload: persistencePayload }),
+      insertTitanSnapshot({ event_ts: persistAt, instrument: persistencePayload.instrument, decision: null, payload: persistencePayload }),
       insertTitanFeature({ event_ts: persistAt, instrument: persistencePayload.instrument, features: featurePayload }),
       insertTitanSystemEvent({ event_type: 'TITAN_LIVE_AUDIT', payload: persistencePayload })
     ]);
