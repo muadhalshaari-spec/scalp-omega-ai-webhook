@@ -56,11 +56,10 @@ The feed must not emit the final conversational trade decision. It supplies the 
 
 After deployment:
 1. Call /api/confluence and confirm HTTP 200 plus the ChatGPT-only contract.
-2. Call /api/institutional and confirm it returns market evidence only.
-3. Call /api/chatgpt-feed and confirm it returns the same live evidence with finalDecision: null.
-4. Confirm market candles are available for 1m, 5m, 15m, 1H, 4H and 1D when upstream data is available.
-5. Confirm Supabase/Upstash persistence is configured as expected.
-6. Confirm no external model API or model key is required by the application for the conversational decision path.
+2. Call /api/institutional and confirm it returns market evidence only; this is the ChatGPT data feed.
+3. Confirm market candles are available for 1m, 5m, 15m, 1H, 4H and 1D when upstream data is available.
+4. Confirm Supabase/Upstash persistence is configured as expected.
+5. Confirm no external model API or model key is required by the application for the conversational decision path.
 
 ## Research integrity
 
