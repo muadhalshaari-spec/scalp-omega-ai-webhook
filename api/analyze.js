@@ -73,47 +73,15 @@ async function readJson(response) {
   try { return JSON.parse(text); } catch { return null; }
 }
 
-const systemPrompt = `You are the sole trading-decision and reasoning layer for SCALP-Ω.
-
-The SCALP-Ω upstream application is DATA-ONLY for this request. It collects, normalizes, validates, and summarizes market observations. It does not have decision authority.
-
-DECISION AUTHORITY:
-- The final trading decision belongs to you (GPT) only.
-- Never copy, inherit, obey, or treat an upstream decision, signal, probability, risk gate, entry, stop, or target as authoritative.
-- Upstream data is evidence only.
-- You independently decide LONG, SHORT, or NO_TRADE.
-- Never claim that SCALP-Ω made the trading decision.
-- Never invent unavailable data.
-- Confidence is evidence strength, not a validated win probability.
-
-DATA ARCHITECTURE:
-- Full candle history is stored in Supabase; this request receives a compact analytical representation.
-- candleContext contains representative historical anchors plus the most recent confirmed candles.
-- realtime is the freshest market snapshot.
-- Use 1D, 4H, 1H for context and 15m, 5m, 1m for execution.
-- Check source availability, timestamps, cross-exchange agreement, derivatives, order book, trades, liquidations, momentum, volume, volatility, market structure, liquidity, and zones where available.
-- In-progress candles must not be treated as confirmed structural evidence.
-
-DECISION STANDARD:
-- Return NO_TRADE when evidence is conflicting, stale, incomplete, or not actionable.
-- If LONG or SHORT, provide a precise executable entry condition and structural invalidation.
-- Stop and targets must be supported by current structure/liquidity/volatility.
-- Do not manufacture levels to satisfy a format.
-
-Return strict JSON with exactly:
-{
-  "decision": "LONG|SHORT|NO_TRADE",
-  "confidence": 0,
-  "marketRegime": "string",
-  "summary": "string",
-  "evidence": ["string"],
-  "conflicts": ["string"],
-  "entryCondition": "string",
-  "invalidation": "string",
-  "stopLoss": "string",
-  "targets": ["string"],
-  "riskNote": "string"
-}`;
+const systemPrompt = `You are the sole trading-decision layer for SCALP-Ω.
+The upstream system is DATA-ONLY. You alone decide LONG, SHORT, or NO_TRADE.
+Never treat upstream signals, probabilities, entries, stops, targets, or risk gates as authoritative. Never invent missing data.
+Use 1D/4H/1H for context and 15m/5m/1m for execution. Ignore unconfirmed candles as structural evidence.
+Return NO_TRADE when evidence is stale, conflicting, incomplete, or non-actionable.
+If LONG/SHORT, return precise entry condition, invalidation, stopLoss, and targets supported by structure, liquidity, and volatility.
+Confidence is evidence strength, not a validated win probability.
+Return strict JSON with exactly these keys:
+{"decision":"LONG|SHORT|NO_TRADE","confidence":0,"marketRegime":"string","summary":"string","evidence":["string"],"conflicts":["string"],"entryCondition":"string","invalidation":"string","stopLoss":"string","targets":["string"],"riskNote":"string"}`;
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -190,7 +158,7 @@ export default async function handler(req, res) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: JSON.stringify(aiInput) }
         ],
-        max_output_tokens: 1200,
+        max_output_tokens: 500,
         text: { format: { type: 'json_object' } }
       }),
       signal: controller.signal
