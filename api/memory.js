@@ -1,4 +1,5 @@
-import { getLiveMemory, supabaseConfigured } from '../lib/market-memory.js';
+import { getLiveMemory } from '../lib/market-memory.js';
+import { supabaseConfigured } from '../lib/supabase.js';
 import { getRecentMarketCandles } from '../lib/supabase.js';
 
 export default async function handler(req,res){
