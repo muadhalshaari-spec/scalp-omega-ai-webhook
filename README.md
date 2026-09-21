@@ -17,7 +17,6 @@ SCALP-Ω does not authorize, select, rank, or output a live trading decision. Th
 - `GET /api/bybit` — direct Bybit V5 market-data verification endpoint for ETHUSDT Linear + Spot. It collects ticker/order book/recent trades, instrument/risk/price limits, funding/OI/long-short histories, 1000-bar multi-timeframe klines, mark/index/premium-index series, delivery metadata, and exposes audit results for each requested endpoint.
 - `GET /api/confluence` — legacy/internal market-data pipeline retained for compatibility; the AI decision path does not use its deterministic decision output.
 - `GET /api/backtest?depth=5000` — historical research/backtest diagnostics.
-- `GET /api/analyze` — GPT-5.6 Luna reasoning and trading-decision layer. GPT independently decides LONG/SHORT/NO_TRADE from the data feed.
 - `POST /api/webhook` — fast TradingView webhook receiver. It authenticates, acknowledges immediately, and schedules background processing.
 - `POST /api/process-signal` — background data-processing/persistence route.
 - `GET /api/live-state` and `GET /api/live-stream` — realtime market state.
@@ -36,14 +35,18 @@ The feed contains historical candles in ascending chronological order and expose
 
 - `GET /api/fred` — direct FRED verification endpoint for the configured macro series.
 - The primary `/api/institutional` data feed now fetches FRED macro context during the same request when `FRED_API_KEY` is configured.
-- `/api/analyze` includes a compact `macroContext` in the GPT input; each configured series is capped to its latest 12 observations plus real-time period metadata.
-- FRED is evidence only. It has no trading-decision authority.
+- FRED is evidence only. It does not bypass deterministic safety gates.
 
 Required Vercel environment variable: `FRED_API_KEY` (Production).
 
-## OpenAI
+## Deterministic decision engine
 
-Set the Vercel environment variable `OPENAI_API_KEY`. The `/api/analyze` endpoint sends the data feed and live market state to GPT-5.6 Luna. If OpenAI is unavailable or rate-limited, the endpoint returns an error and does not substitute a deterministic engine decision.
+SCALP-Ω makes trading decisions locally from its deterministic TITAN/confluence/risk engines. No OpenAI API, model API key, external LLM, or `/api/analyze` route is required.
+
+The decision path is:
+`market data → feature/confluence engines → TITAN deterministic gates → LONG/SHORT/NO_TRADE`
+
+The system fails closed to `NO_TRADE` when data quality, event risk, risk/reward, kill-switch, or directional confirmation gates are not satisfied.
 
 ## Webhook authentication
 
