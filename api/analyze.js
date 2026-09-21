@@ -68,6 +68,44 @@ function buildAiInput(dataFeed, liveData) {
   };
 }
 
+function buildDecisionInput(dataFeed, liveData, previousMemory) {
+  const market = dataFeed.market || {};
+  const featureSummary = dataFeed.featureSummary || {};
+  const features = Object.fromEntries(Object.entries(featureSummary).map(([tf,f]) => [tf, {
+    last:f?.lastCandle ? { time:f.lastCandle.time ?? null, open:f.lastCandle.open ?? null, high:f.lastCandle.high ?? null, low:f.lastCandle.low ?? null, close:f.lastCandle.close ?? null, volume:f.lastCandle.volume ?? null } : null,
+    indicators:f?.indicators ? { ema20:f.indicators.ema20 ?? null, ema50:f.indicators.ema50 ?? null, ema200:f.indicators.ema200 ?? null, rsi:f.indicators.rsi14 ?? null, atr:f.indicators.atr14 ?? null, vwap:f.indicators.vwap ?? null, macdHist:f.indicators.macdHistogram ?? null, volRatio:f.indicators.volumeRatio20 ?? null } : null,
+    momentum:f?.momentum ? { pct:f.momentum.priceChangePct1 ?? null, above20:f.momentum.aboveEma20 ?? null, above50:f.momentum.aboveEma50 ?? null, above200:f.momentum.aboveEma200 ?? null } : null
+  }]));
+  const ext = dataFeed.externalIntelligence || {};
+  const providers = Object.fromEntries(Object.entries(ext.providers || {}).map(([name,p]) => [name, p ? {
+    available:p.available === true, route:p.route ?? null, price:p.price ?? null, markPrice:p.markPrice ?? null, indexPrice:p.indexPrice ?? null, fundingRate:p.fundingRate ?? p.currentFunding ?? null, openInterest:p.openInterest ?? null
+  } : null]));
+  const persistedHistory = Object.fromEntries(Object.entries(ext.persistedHistory || {}).map(([source,byTf]) => [source,
+    Object.fromEntries(Object.entries(byTf || {}).map(([tf,rows]) => {
+      const list = Array.isArray(rows) ? rows : [];
+      const last = list.at(-1);
+      return [tf, { storedRows:list.length, newest:last?.time_ms ?? null }];
+    }))
+  ]));
+  const macro = dataFeed.macroContext || {};
+  const macroLatest = Object.fromEntries(Object.entries(macro.series || {}).map(([id,s]) => {
+    const o = Array.isArray(s?.observations) ? s.observations.at(-1) : null;
+    return [id, o ? { date:o.date ?? null, value:o.value ?? o.val ?? null } : null];
+  }));
+  const liveTicker = liveData?.ticker || {};
+  const book = liveData?.orderBook || market.orderBook || null;
+  return {
+    engine:dataFeed.engine, decisionAuthority:dataFeed.decisionAuthority || 'CHATGPT_ONLY', instrument:dataFeed.instrument, fetchedAt:dataFeed.fetchedAt,
+    market:{ price:market.price ?? null, openInterest:market.openInterest ?? null, fundingRate:market.fundingRate ?? null, nextFundingRate:market.nextFundingRate ?? null,
+      bid:liveTicker.bid ?? liveTicker.bidPx ?? null, ask:liveTicker.ask ?? liveTicker.askPx ?? null, markPrice:liveTicker.markPrice ?? liveTicker.markPx ?? null,
+      orderBookTop:book ? { bids:Array.isArray(book.bids)?book.bids.slice(0,1):[], asks:Array.isArray(book.asks)?book.asks.slice(0,1):[] } : null },
+    timeframes:features, external:{providers,persistedHistory,crossExchange:ext.crossExchange ?? null,featureSignals:ext.featureSignals ?? null},
+    macro:{status:macro.status ?? null, latest:macroLatest},
+    dataQuality:{ candlesPerTimeframe:dataFeed.dataQuality?.candlesPerTimeframe ?? {}, closedCandlesPerTimeframe:dataFeed.dataQuality?.closedCandlesPerTimeframe ?? {}, chronologicalOrder:dataFeed.dataQuality?.chronologicalOrder ?? {}, fred:dataFeed.dataQuality?.fred ?? null },
+    realtime:{connected:liveData?.connected === true, updatedAt:liveData?.updatedAt ?? null, latestTrade:liveData?.latestTrade ?? null},
+    memory:{upstashConfigured:previousMemory?.configured === true, cached:previousMemory?.value != null}
+  };
+}
 async function readJson(response) {
   const text = await response.text();
   try { return JSON.parse(text); } catch { return null; }
@@ -141,7 +179,7 @@ export default async function handler(req, res) {
     }
 
     const rawAiInput = buildAiInput(dataFeed, liveData);
-    const aiInput = compactAiInput(rawAiInput, { previousLive: previousMemory });
+    const aiInput = buildDecisionInput(dataFeed, liveData, previousMemory);
 
     // Historical persistence and realtime cache are non-authoritative infrastructure.
     waitUntil(persistMarketMemory(dataFeed, liveData).catch(() => null));
@@ -158,7 +196,7 @@ export default async function handler(req, res) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: JSON.stringify(aiInput) }
         ],
-        max_output_tokens: 500,
+        max_output_tokens: 300,
         text: { format: { type: 'json_object' } }
       }),
       signal: controller.signal
