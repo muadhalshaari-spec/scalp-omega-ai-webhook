@@ -1,3 +1,5 @@
+import { getLiveMemory } from '../lib/market-memory.js';
+
 export default async function handler(req,res){
   if(req.method!=='GET')return res.status(405).json({ok:false,error:'Method not allowed'});
   const host=typeof req.headers.host==='string'?req.headers.host:'scalp-omega-ai-webhook.vercel.app';
@@ -20,6 +22,10 @@ export default async function handler(req,res){
       return out;
     };
 
+    const memory = await getLiveMemory().catch(error => ({ configured:false, value:null, error:error?.message||String(error) }));
+    const memoryUpdatedAt = memory?.value?.updatedAt ? Date.parse(memory.value.updatedAt) : null;
+    const memoryAgeMs = Number.isFinite(memoryUpdatedAt) ? Math.max(0, Date.now() - memoryUpdatedAt) : null;
+
     return res.status(200).json({
       ok:true,
       engine:'SCALP-Ω AI Data Feed v2',
@@ -36,7 +42,15 @@ export default async function handler(req,res){
       macroContext:stripDerivedSignals(data.macroContext||null),
       observations:stripDerivedSignals(data.observations),
       dataQuality:data.dataQuality,
-      featureSummary:stripDerivedSignals(data.featureSummary)
+      featureSummary:stripDerivedSignals(data.featureSummary),
+      memory:{
+        historicalStore:'SUPABASE',
+        realtimeStore:'UPSTASH_REDIS',
+        upstashConfigured:memory?.configured===true,
+        upstashReachable:memory?.value!=null,
+        upstashUpdatedAt:memory?.value?.updatedAt||null,
+        upstashAgeMs:memoryAgeMs
+      }
     });
   }catch(e){
     return res.status(502).json({ok:false,error:e?.message||String(e)})
