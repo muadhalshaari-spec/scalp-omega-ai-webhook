@@ -59,6 +59,10 @@ Scores and confidence values are evidence-strength measures, not validated proba
 
 The webhook receiver does not wait for market analysis. It returns 202 with a jobId, then invokes background processing using Vercel waitUntil. For durable retries beyond the serverless lifecycle, a persistent queue such as QStash or Inngest can be added later.
 
+## Deployment
+
+The `main` branch is the source of truth for the Vercel Production deployment.
+
 ## Safety
 
 Set both `TV_WEBHOOK_SECRET` and `SIGNAL_PROCESS_SECRET` in Vercel production. Never place exchange withdrawal permissions or private API keys in TradingView alerts.
