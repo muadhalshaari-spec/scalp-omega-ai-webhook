@@ -5,6 +5,8 @@ import { fetchDerivativeData } from '../lib/derivatives-data.js';
 import { fetchExternalIntelligence } from '../lib/external-intelligence.js';
 import { getFredMacroSnapshot, fredConfigured } from '../lib/fred.js';
 import { getRecentLiquidations } from '../lib/supabase.js';
+import { waitUntil } from '@vercel/functions';
+import { persistMarketMemory } from '../lib/market-memory.js';
 
 export const maxDuration = 60;
 
@@ -520,6 +522,20 @@ export default async function handler(req, res) {
         ])
       )
     };
+
+    // Keep realtime memory alive from the primary market-data request.
+    const memoryFeed = {
+      source: 'OKX', instrument: instId, fetchedAt: payload.fetchedAt,
+      market: { ...market, candlesByTf: candles },
+      featureSummary: payload.featureSummary, dataQuality: payload.dataQuality
+    };
+    const memoryLive = {
+      source: 'OKX', updatedAt: payload.fetchedAt,
+      ticker: ticker ? { last: Number(ticker.last), bid: Number(ticker.bidPx), ask: Number(ticker.askPx), markPrice: Number(ticker.last) } : null,
+      latestTrade: Array.isArray(tradesData.data) ? tradesData.data[0] || null : null,
+      orderBook
+    };
+    waitUntil(persistMarketMemory(memoryFeed, memoryLive).catch(() => null));
 
     // Return stable, human-readable English JSON for clean copy/paste.
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
