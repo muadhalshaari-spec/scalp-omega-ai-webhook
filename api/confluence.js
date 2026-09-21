@@ -136,21 +136,21 @@ export default async function handler(req, res) {
     }
   };
 
-  const fetchPersistedExternalHistory = async () => {
-    const result = {};
-    for (const source of ['BINANCE', 'BYBIT']) {
-      result[source] = {};
-      for (const timeframe of bars) {
-        try {
-          const instrument = source === 'BINANCE' ? 'ETHUSDT' : 'ETHUSDT';
-          const rows = await getRecentMarketCandles({ source, instrument, timeframe, limit: 1000 });
-          result[source][timeframe] = rows.rows || [];
-        } catch {
-          result[source][timeframe] = [];
-        }
-      }
+  const fetchMarketRelay = async () => {
+    try {
+      const response = await fetch('https://gmoyyermoxdyslsuwibz.supabase.co/functions/v1/market-read', {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      const text = await response.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch {}
+      if (!response.ok || !data?.ok) throw new Error(`Market relay HTTP ${response.status}`);
+      return data;
+    } catch (error) {
+      return { ok: false, error: error?.message || String(error), snapshot: null, history: {} };
     }
-    return result;
   };
 
   const normalize = (rows) => rows.map((c) => ({
@@ -348,7 +348,7 @@ export default async function handler(req, res) {
     );
 
     const base15m = candles['15m'] || [];
-    const [derivativesData, externalIntelligence, macroContext, persistedExternalHistory] = await Promise.all([
+    const [derivativesData, externalIntelligenceBase, macroContext, marketRelay] = await Promise.all([
       fetchDerivativeData({
         instId,
         begin: base15m[0]?.time ?? null,
@@ -358,8 +358,41 @@ export default async function handler(req, res) {
       }).catch(() => ({ current: {}, history: { oi: [], funding: [], longShort: [], takerVolume: [] } })),
       fetchExternalIntelligence({ symbol: 'ETHUSDT', signal: controller.signal }).catch(() => ({ ok:false, providers:{}, crossExchange:{agreement:'UNAVAILABLE'}, dataQuality:{status:'FAILED'} })),
       fetchFredMacro(),
-      fetchPersistedExternalHistory()
+      fetchMarketRelay()
     ]);
+
+    const externalIntelligence = externalIntelligenceBase && typeof externalIntelligenceBase === 'object'
+      ? { ...externalIntelligenceBase }
+      : { ok:false, providers:{}, crossExchange:{agreement:'UNAVAILABLE'}, dataQuality:{status:'FAILED'} };
+    const relaySnapshot = marketRelay?.snapshot?.payload || null;
+    const relayHistory = marketRelay?.history || {};
+    externalIntelligence.persistedHistory = relayHistory;
+    if (relaySnapshot?.binance) {
+      const b = relaySnapshot.binance;
+      const mark = Number(b.premiumIndex?.markPrice);
+      const funding = Number(b.premiumIndex?.lastFundingRate);
+      const oi = Number(b.openInterest?.openInterest);
+      externalIntelligence.providers = { ...(externalIntelligence.providers || {}), binance: {
+        ...(externalIntelligence.providers?.binance || {}),
+        available: Number.isFinite(mark), source:'Binance', route:'SUPABASE_PUBLIC_MARKET_RELAY',
+        directAvailable: false, timestamp: marketRelay.fetchedAt || Date.now(),
+        price: Number.isFinite(mark) ? mark : null, markPrice:Number.isFinite(mark) ? mark : null,
+        fundingRate:Number.isFinite(funding) ? funding : null, openInterest:Number.isFinite(oi) ? oi : null
+      } };
+    }
+    if (relaySnapshot?.bybit) {
+      const b = relaySnapshot.bybit;
+      const price = Number(b.ticker?.lastPrice);
+      const funding = Number(b.ticker?.fundingRate);
+      const oi = Number(b.openInterest?.openInterest);
+      externalIntelligence.providers = { ...(externalIntelligence.providers || {}), bybit: {
+        ...(externalIntelligence.providers?.bybit || {}),
+        available: Number.isFinite(price), source:'Bybit', route:'SUPABASE_PUBLIC_MARKET_RELAY',
+        directAvailable: false, timestamp: marketRelay.fetchedAt || Date.now(),
+        price:Number.isFinite(price) ? price : null, fundingRate:Number.isFinite(funding) ? funding : null,
+        openInterest:Number.isFinite(oi) ? oi : null
+      } };
+    }
 
     externalIntelligence.persistedHistory = persistedExternalHistory;
 
