@@ -1,5 +1,6 @@
 import { getLiveMemory } from '../lib/market-memory.js';
-import { getMarketCandleCoverageMatrix, getMicrostructureHistory } from '../lib/supabase.js';
+import { getMarketCandleCoverageMatrix, getMicrostructureHistory, insertTitanSnapshot, insertTitanFeature, insertTitanSystemEvent } from '../lib/supabase.js';
+import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 
 export default async function handler(req,res){
   if(req.method!=='GET')return res.status(405).json({ok:false,error:'Method not allowed'});
@@ -42,8 +43,74 @@ export default async function handler(req,res){
     };
     const text=await r.text();let data;try{data=JSON.parse(text)}catch{data=null}
     if(!r.ok||!data?.ok)return res.status(502).json({ok:false,error:data?.error||text.slice(0,500)});
-    // DATA-ONLY CONTRACT: expose observations and market data only.
-    // Deliberately omit all trading decisions, signals, probabilities, entries, stops, targets and risk gates.
-    return res.status(200).json({ok:true,engine:'SCALP-Ω Market Data Feed v3',decisionAuthority:'CHATGPT_CONVERSATIONAL_ONLY',decisionPolicy:'CHATGPT_ONLY',source:data.source,instrument:data.instrument,fetchedAt:data.fetchedAt,analysisMode:'DATA_FOR_CHATGPT',market:data.market,features:data.features,contexts:data.contexts,externalIntelligence:data.externalIntelligence,institutionalLayer:data.institutionalLayer||data.market?.institutionalLayer||null,macroContext:data.macroContext||null,observations:data.observations,dataQuality:data.dataQuality,featureSummary:data.featureSummary,memory:{historicalStore:'SUPABASE',realtimeStore:'UPSTASH_REDIS',upstashConfigured:memory.configured,upstashLiveSnapshotCached:memory.value!==null,upstashUpdatedAt:memory.value?.updatedAt||null,microstructureHistory:mhSummary,historicalCoverageBySource:coverageMatrix}});
+    const liveTitan = buildInstitutionalAnalysis({
+      candlesByTf: data.market?.candlesByTf || {},
+      market: data.market || {},
+      realtime: {
+        price: data.market?.price ?? null,
+        orderBook: data.market?.orderBook || null,
+        trades: data.market?.trades || []
+      },
+      externalEvents: data.externalIntelligence?.events || [],
+      calibration: null,
+      thresholds: { long: 0.72, short: 0.72, minEdge: 0.12 },
+      timestamp: Date.parse(data.fetchedAt || new Date().toISOString()) || Date.now(),
+      mode: 'live',
+      historicalAnalogs: [],
+      externalIntelligence: data.externalIntelligence || null
+    });
+
+    const titan = liveTitan.titan || {};
+    const outputs = titan.outputs || {};
+    const moduleStatus = Object.fromEntries(Object.entries(outputs).map(([id, o]) => [id, {
+      status: o?.state?.status || null,
+      direction: o?.state?.direction || null,
+      warnings: o?.diagnostics?.warnings || [],
+      errors: o?.diagnostics?.errors || []
+    }]));
+    const titan55 = {
+      engine: titan.engine || 'SCALP-Ω TITAN 55',
+      version: titan.version || '1.0.0',
+      decision: liveTitan.titanDecision || 'NO_TRADE',
+      deterministicDecision: liveTitan.deterministicDecision || 'NO_TRADE',
+      blocked: titan.blocked ?? true,
+      blockers: titan.blockers || [],
+      score: titan.score ?? null,
+      confidence: titan.confidence ?? null,
+      summary: titan.summary || null,
+      moduleStatus,
+      chatgptAuthority: 'CHATGPT_ONLY'
+    };
+
+    const persistencePayload = {
+      timestamp: data.fetchedAt || new Date().toISOString(),
+      instrument: data.instrument || 'ETH-USDT-SWAP',
+      decision: 'NO_TRADE',
+      titanDecision: titan55.decision,
+      blockers: titan55.blockers,
+      summary: titan55.summary,
+      moduleStatus
+    };
+    const persistAt = persistencePayload.timestamp;
+    const featurePayload = {
+      timestamp: persistAt,
+      instrument: persistencePayload.instrument,
+      featureSummary: data.featureSummary || {},
+      dataQuality: data.dataQuality || {},
+      market: { price: data.market?.price ?? null, openInterest: data.market?.openInterest ?? null, fundingRate: data.market?.fundingRate ?? null },
+      titan55: { decision: titan55.decision, score: titan55.score, confidence: titan55.confidence }
+    };
+    const persistResults = await Promise.allSettled([
+      insertTitanSnapshot({ event_ts: persistAt, instrument: persistencePayload.instrument, decision: 'NO_TRADE', payload: persistencePayload }),
+      insertTitanFeature({ timestamp: persistAt, instrument: persistencePayload.instrument, features: featurePayload }),
+      insertTitanSystemEvent({ event_type: 'TITAN_LIVE_AUDIT', payload: persistencePayload })
+    ]);
+    const titanPersistence = {
+      snapshot: persistResults[0].status === 'fulfilled' ? persistResults[0].value : { persisted: false, status: 'ERROR', error: String(persistResults[0].reason?.message || persistResults[0].reason) },
+      feature: persistResults[1].status === 'fulfilled' ? persistResults[1].value : { persisted: false, status: 'ERROR', error: String(persistResults[1].reason?.message || persistResults[1].reason) },
+      systemEvent: persistResults[2].status === 'fulfilled' ? persistResults[2].value : { persisted: false, status: 'ERROR', error: String(persistResults[2].reason?.message || persistResults[2].reason) }
+    };
+
+    return res.status(200).json({ok:true,engine:'SCALP-Ω Market Data Feed v5',decisionAuthority:'CHATGPT_CONVERSATIONAL_ONLY',decisionPolicy:'CHATGPT_ONLY',source:data.source,instrument:data.instrument,fetchedAt:data.fetchedAt,analysisMode:'DATA_FOR_CHATGPT',market:data.market,features:data.features,contexts:data.contexts,externalIntelligence:data.externalIntelligence,institutionalLayer:data.institutionalLayer||data.market?.institutionalLayer||null,macroContext:data.macroContext||null,observations:data.observations,dataQuality:data.dataQuality,featureSummary:data.featureSummary,titan55,titanPersistence,memory:{historicalStore:'SUPABASE',realtimeStore:'UPSTASH_REDIS',upstashConfigured:memory.configured,upstashLiveSnapshotCached:memory.value!==null,upstashUpdatedAt:memory.value?.updatedAt||null,microstructureHistory:mhSummary,historicalCoverageBySource:coverageMatrix}});
   }catch(e){return res.status(502).json({ok:false,error:e?.message||String(e)})}
 }
