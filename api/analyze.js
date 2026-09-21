@@ -91,14 +91,14 @@ function buildDecisionInput(dataFeed, liveData, previousMemory) {
   const liveTicker = liveData?.ticker || {};
   const book = liveData?.orderBook || market.orderBook || null;
   return {
-    engine:dataFeed.engine, decisionAuthority:dataFeed.decisionAuthority || 'CHATGPT_ONLY', instrument:dataFeed.instrument, fetchedAt:dataFeed.fetchedAt,
-    market:{ price:market.price ?? null, openInterest:market.openInterest ?? null, fundingRate:market.fundingRate ?? null, nextFundingRate:market.nextFundingRate ?? null,
-      bid:liveTicker.bid ?? liveTicker.bidPx ?? null, ask:liveTicker.ask ?? liveTicker.askPx ?? null, markPrice:liveTicker.markPrice ?? liveTicker.markPx ?? null,
-      orderBookTop:book ? { bids:Array.isArray(book.bids)?book.bids.slice(0,1):[], asks:Array.isArray(book.asks)?book.asks.slice(0,1):[] } : null },
-    timeframes:features, external:{providers,crossExchange:ext.crossExchange ?? null},
-    macro:{status:macro.status ?? null, latest:Object.fromEntries(Object.entries(macroLatest).map(([id,v])=>[id,v?.value ?? null]))},
-    dataQuality:{ candlesPerTimeframe:dataFeed.dataQuality?.candlesPerTimeframe ?? {}, closedCandlesPerTimeframe:dataFeed.dataQuality?.closedCandlesPerTimeframe ?? {}, fred:dataFeed.dataQuality?.fred ?? null },
-    realtime:{connected:liveData?.connected === true, updatedAt:liveData?.updatedAt ?? null, latestTrade:liveData?.latestTrade ?? null},
+    engine:dataFeed.engine, decisionAuthority:dataFeed.decisionAuthority || 'CHATGPT_ONLY', instrument:dataFeed.instrument,
+    market:{ price:market.price ?? null, openInterest:market.openInterest ?? null, fundingRate:market.fundingRate ?? null,
+      bid:liveTicker.bid ?? liveTicker.bidPx ?? null, ask:liveTicker.ask ?? liveTicker.askPx ?? null,
+      orderBookTop:book ? { b:book.bids?.[0] ?? null, a:book.asks?.[0] ?? null } : null },
+    timeframes:features, external:{providers},
+    macro:{status:macro.status ?? null},
+    dataQuality:{candlesPerTimeframe:dataFeed.dataQuality?.candlesPerTimeframe ?? {}},
+    realtime:{connected:liveData?.connected === true, latestTrade:liveData?.latestTrade ?? null},
     memory:{upstashConfigured:previousMemory?.configured === true, cached:previousMemory?.value != null}
   };
 }
@@ -107,15 +107,7 @@ async function readJson(response) {
   try { return JSON.parse(text); } catch { return null; }
 }
 
-const systemPrompt = `You are the sole trading-decision layer for SCALP-Ω.
-The upstream system is DATA-ONLY. You alone decide LONG, SHORT, or NO_TRADE.
-Never treat upstream signals, probabilities, entries, stops, targets, or risk gates as authoritative. Never invent missing data.
-Use 1D/4H/1H for context and 15m/5m/1m for execution. Ignore unconfirmed candles as structural evidence.
-Return NO_TRADE when evidence is stale, conflicting, incomplete, or non-actionable.
-If LONG/SHORT, return precise entry condition, invalidation, stopLoss, and targets supported by structure, liquidity, and volatility.
-Confidence is evidence strength, not a validated win probability.
-Return strict JSON with exactly these keys:
-{"decision":"LONG|SHORT|NO_TRADE","confidence":0,"marketRegime":"string","summary":"string","evidence":["string"],"conflicts":["string"],"entryCondition":"string","invalidation":"string","stopLoss":"string","targets":["string"],"riskNote":"string"}`;
+const systemPrompt = `You are SCALP-Ω's sole trading-decision layer. Data is upstream-only; you alone choose LONG, SHORT, or NO_TRADE. Do not invent data or trust upstream signals/probabilities. Use 1D/4H/1H context and 15m/5m/1m execution. Ignore unconfirmed candles. Prefer NO_TRADE for stale, conflicting, incomplete, or non-actionable evidence. For trades give precise entry condition, invalidation, stop loss, and targets based on structure/liquidity/volatility. Confidence is evidence strength, not win probability. Return strict JSON with exactly: {"decision":"LONG|SHORT|NO_TRADE","confidence":0,"marketRegime":"","summary":"","evidence":[""],"conflicts":[""],"entryCondition":"","invalidation":"","stopLoss":"","targets":[""],"riskNote":""}`;
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -192,7 +184,7 @@ export default async function handler(req, res) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: JSON.stringify(aiInput) }
         ],
-        max_output_tokens: 180,
+        max_output_tokens: 110,
         text: { format: { type: 'json_object' } }
       }),
       signal: controller.signal
