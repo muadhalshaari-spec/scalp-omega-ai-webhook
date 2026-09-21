@@ -102,7 +102,7 @@ export default async function handler(req,res){
     };
     const persistResults = await Promise.allSettled([
       insertTitanSnapshot({ event_ts: persistAt, instrument: persistencePayload.instrument, decision: 'NO_TRADE', payload: persistencePayload }),
-      insertTitanFeature({ timestamp: persistAt, instrument: persistencePayload.instrument, features: featurePayload }),
+      insertTitanFeature({ event_ts: persistAt, instrument: persistencePayload.instrument, features: featurePayload }),
       insertTitanSystemEvent({ event_type: 'TITAN_LIVE_AUDIT', payload: persistencePayload })
     ]);
     const titanPersistence = {
