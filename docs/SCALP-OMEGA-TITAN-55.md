@@ -58,8 +58,8 @@ The orchestrator is `lib/titan/index.js`. It imports all 55 engines, feeds downs
 42. 42_redis-state-layer
 43. 43_supabase-persistence-schema
 44. 44_trade-journal-learning-loop
-45. 45_openai-audit-layer
-46. 46_gpt-contract
+45. 45_deterministic-audit-layer
+46. 46_decision-contract
 47. 47_api-webhook-processor
 48. 48_automated-tests
 49. 49_cicd
@@ -82,7 +82,7 @@ Walk-forward, calibration, meta-labeling, CSCV/PBO, historical dataset alignment
 
 - Missing or stale evidence must remain visible; it is never silently converted to certainty.
 - Future timestamps relative to the decision timestamp are rejected as lookahead.
-- GPT/OpenAI is an audit layer and cannot invent price levels or override deterministic safety gates.
+- The decision and audit layers are deterministic and cannot invent price levels or override safety gates.
 - CoinGlass remains optional/cancelled according to the current project configuration; live REST snapshots are not treated as persisted historical truth for backtests.
 - Production promotion remains a separate release step from source implementation and local validation.
 
