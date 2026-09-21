@@ -203,37 +203,38 @@ export default async function handler(req, res) {
       });
     }
 
-    let analysis = null;
-    const outputParts = Array.isArray(openaiData?.output)
-      ? openaiData.output.flatMap(item => Array.isArray(item?.content) ? item.content : [])
-      : [];
-
-    const directJsonCandidates = [
-      openaiData?.output_parsed,
-      ...outputParts.map(p => p?.json),
-      ...outputParts.map(p => p?.parsed)
-    ].filter(x => x && typeof x === 'object');
-
-    if (directJsonCandidates.length) {
-      analysis = directJsonCandidates[0];
-    } else {
-      const outputText = [
-        typeof openaiData?.output_text === 'string' ? openaiData.output_text : '',
-        ...outputParts.map(p => {
-          if (typeof p?.text === 'string') return p.text;
-          if (typeof p?.text?.value === 'string') return p.text.value;
-          if (typeof p?.value === 'string') return p.value;
-          return '';
-        })
-      ].filter(Boolean).join('').trim();
-
-      const cleaned = outputText
-        .replace(/^\\s*\\`\\`\\`(?:json)?\\s*/i, '')
-        .replace(/\\s*\\`\\`\\`\\s*$/i, '');
-
-      try { analysis = JSON.parse(cleaned); } catch {}
+    function extractDecision(value, depth = 0) {
+      if (depth > 8 || value == null) return null;
+      if (typeof value === 'object') {
+        if (typeof value.decision === 'string' && ['LONG', 'SHORT', 'NO_TRADE'].includes(value.decision)) return value;
+        const values = Array.isArray(value) ? value : Object.values(value);
+        for (const item of values) {
+          const found = extractDecision(item, depth + 1);
+          if (found) return found;
+        }
+        return null;
+      }
+      if (typeof value === 'string') {
+        const raw = value.trim();
+        try {
+          const parsed = JSON.parse(raw);
+          const found = extractDecision(parsed, depth + 1);
+          if (found) return found;
+        } catch {}
+        const first = raw.indexOf('{');
+        const last = raw.lastIndexOf('}');
+        if (first >= 0 && last > first) {
+          try {
+            const parsed = JSON.parse(raw.slice(first, last + 1));
+            const found = extractDecision(parsed, depth + 1);
+            if (found) return found;
+          } catch {}
+        }
+      }
+      return null;
     }
 
+    const analysis = extractDecision(openaiData);
     if (!analysis || !['LONG', 'SHORT', 'NO_TRADE'].includes(analysis.decision)) {
       return res.status(502).json({
         ok: false,
