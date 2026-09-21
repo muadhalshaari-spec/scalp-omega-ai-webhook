@@ -8,9 +8,11 @@ Every engine exposes `MODULE`, `evaluate(input)`, `selfTest()`, and a determinis
 
 ## Pipeline
 
-`SCALP-Ω institutional engine → TITAN-01…55 sequential orchestration → canonical state propagation → deterministic hard gates → final LONG/SHORT/NO_TRADE`
+`market data -> SCALP-Ω collection/feature layer -> TITAN deterministic calculations/research -> ChatGPT final conversational reasoning -> LONG / SHORT / NO_TRADE`
 
 The orchestrator is `lib/titan/index.js`. It imports all 55 engines, feeds downstream engines the accumulated canonical state and prior outputs, maintains a dependency graph, and returns the full trace.
+
+The TITAN layer remains available for deterministic calculations, diagnostics, research, validation, and market observations. It is **not** the final decision authority for the conversational workflow.
 
 ## Engines
 
@@ -70,26 +72,24 @@ The orchestrator is `lib/titan/index.js`. It imports all 55 engines, feeds downs
 54. 54_final-system-audit
 55. 55_system-validation-matrix
 
-## Hard operational gates
+## Operational role
 
-The live decision is fail-closed on data-quality failure, event-risk blocks, kill-switch activation, risk/reward failure, and directional conflict with the deterministic base decision. Model drift can also hard-block when measured drift reaches the configured severe threshold.
+Deterministic engines may calculate structure, indicators, risk observations, data quality, research diagnostics, and other evidence. They are not the final conversational trading authority.
 
-## Research gates
+## Research integrity
 
 Walk-forward, calibration, meta-labeling, CSCV/PBO, historical dataset alignment, execution simulation, and trade-journal engines are research/validation layers. Their existence does not constitute proof of profitability, predictive accuracy, or live trading success.
 
 ## Safety boundaries
 
 - Missing or stale evidence must remain visible; it is never silently converted to certainty.
-- Future timestamps relative to the decision timestamp are rejected as lookahead.
-- The decision and audit layers are deterministic and cannot invent price levels or override safety gates.
-- CoinGlass remains optional/cancelled according to the current project configuration; live REST snapshots are not treated as persisted historical truth for backtests.
-- Production promotion remains a separate release step from source implementation and local validation.
+- Future timestamps relative to the analysis timestamp are rejected as lookahead.
+- Deterministic modules cannot invent live market facts.
+- Optional providers may be unavailable; their absence must remain visible in data-quality output.
+- Production promotion remains a separate release step from source implementation and validation.
 
 ## Verification commands
 
 `node scripts/titan-55-quality-gate.mjs`
 
 `node scripts/titan-55-integration.mjs`
-
-The quality gate requires exactly 55 numbered engines, domain-specific implementation markers, valid exports, an acyclic dependency graph, and all 55 self-tests passing.
