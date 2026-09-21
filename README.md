@@ -68,3 +68,6 @@ Set both `TV_WEBHOOK_SECRET` and `SIGNAL_PROCESS_SECRET` in Vercel production. N
 
 <!-- ChatGPT decision bridge deployment marker -->
 <!-- production-sync: 2026-09-21T21:12:00+03:00 -->
+
+
+<!-- Production integration verification: ChatGPT-only decision authority -->
