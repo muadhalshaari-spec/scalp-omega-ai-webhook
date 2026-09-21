@@ -70,7 +70,7 @@ function refreshReadiness() {
   const missing = [];
   if (!state.ticker) missing.push('ticker');
   if (!state.latestTrade) missing.push('trades');
-  if (!state.orderBook) missing.push('books5');
+  if (!state.orderBook) missing.push('books');
   for (const tf of TIMEFRAMES) {
     if (!candleStatus[tf]) missing.push(`candle${tf}`);
   }
@@ -220,7 +220,7 @@ function connectSocket(url, args, kind) {
 
       if (channel === 'tickers') state.ticker = row;
       else if (channel === 'trades') state.latestTrade = row;
-      else if (channel === 'books5') state.orderBook = row;
+      else if (channel === 'books') state.orderBook = row;
       else if (channel.startsWith('candle')) {
         const tf = channel.slice('candle'.length);
         if (TIMEFRAMES.includes(tf)) {
@@ -308,7 +308,7 @@ function connectOKX() {
     connectSocket(OKX_PUBLIC_WS, [
       { channel: 'tickers', instId: INST_ID },
       { channel: 'trades', instId: INST_ID },
-      { channel: 'books5', instId: INST_ID },
+      { channel: 'books', instId: INST_ID },
       { channel: 'liquidation-orders', instType: 'SWAP' }
     ], 'public');
   }
@@ -345,7 +345,7 @@ const server = createServer(async (req, res) => {
         ok: false,
         dataReady: false,
         error: 'Live market channels are not fully ready',
-        requiredChannels: ['ticker', 'trades', 'books5', ...TIMEFRAMES.map(tf => `candle${tf}`)]
+        requiredChannels: ['ticker', 'trades', 'books', ...TIMEFRAMES.map(tf => `candle${tf}`)]
       }, 503);
       return;
     }
