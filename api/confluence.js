@@ -425,6 +425,7 @@ export default async function handler(req, res) {
       takerVolumeHistory: derivativesData.history.takerVolume,
       orderBook,
       trades: tradesData.data || [],
+      candlesByTf: candles,
       candlesByExchange: {
         OKX: candles['15m'] || [],
         ...((externalIntelligence?.providers?.binance?.futures?.candles?.klines?.['15m'] || []).length
