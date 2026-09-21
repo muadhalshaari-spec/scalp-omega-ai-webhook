@@ -81,7 +81,7 @@ function buildDecisionInput(dataFeed, liveData, previousMemory) {
   }]));
   const ext = dataFeed.externalIntelligence || {};
   const providers = Object.fromEntries(Object.entries(ext.providers || {}).map(([name,p]) => [name, p ? {
-    available:p.available === true, route:p.route ?? null, price:p.price ?? null, markPrice:p.markPrice ?? null, indexPrice:p.indexPrice ?? null, fundingRate:p.fundingRate ?? p.currentFunding ?? null, openInterest:p.openInterest ?? null
+    available:p.available === true, price:p.price ?? null, fundingRate:p.fundingRate ?? p.currentFunding ?? null, openInterest:p.openInterest ?? null
   } : null]));
   const macro = dataFeed.macroContext || {};
   const macroLatest = Object.fromEntries(Object.entries(macro.series || {}).map(([id,s]) => {
