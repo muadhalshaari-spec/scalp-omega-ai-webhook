@@ -211,16 +211,36 @@ export default async function handler(req, res) {
       });
     }
 
-    const outputText =
-      openaiData?.output_text ||
-      openaiData?.output?.flatMap(item => item.content || [])
-        ?.map(item => item.text)
-        ?.filter(Boolean)
-        ?.join('') ||
-      '';
-
     let analysis = null;
-    try { analysis = JSON.parse(outputText); } catch {}
+    const outputParts = Array.isArray(openaiData?.output)
+      ? openaiData.output.flatMap(item => Array.isArray(item?.content) ? item.content : [])
+      : [];
+
+    const directJsonCandidates = [
+      openaiData?.output_parsed,
+      ...outputParts.map(p => p?.json),
+      ...outputParts.map(p => p?.parsed)
+    ].filter(x => x && typeof x === 'object');
+
+    if (directJsonCandidates.length) {
+      analysis = directJsonCandidates[0];
+    } else {
+      const outputText = [
+        typeof openaiData?.output_text === 'string' ? openaiData.output_text : '',
+        ...outputParts.map(p => {
+          if (typeof p?.text === 'string') return p.text;
+          if (typeof p?.text?.value === 'string') return p.text.value;
+          if (typeof p?.value === 'string') return p.value;
+          return '';
+        })
+      ].filter(Boolean).join('').trim();
+
+      const cleaned = outputText
+        .replace(/^\\s*\\`\\`\\`(?:json)?\\s*/i, '')
+        .replace(/\\s*\\`\\`\\`\\s*$/i, '');
+
+      try { analysis = JSON.parse(cleaned); } catch {}
+    }
 
     if (!analysis || !['LONG', 'SHORT', 'NO_TRADE'].includes(analysis.decision)) {
       return res.status(502).json({
