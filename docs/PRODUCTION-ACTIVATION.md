@@ -2,19 +2,17 @@
 
 ## Current memory architecture
 
-market data -> SCALP-Ω -> memory layer -> ChatGPT (GPT-5.6 Luna) -> trading decision
+market data -> SCALP-Ω -> deterministic TITAN/confluence/risk engines -> trading decision
 
 Supabase stores the large historical candle set and durable market snapshots.
 Upstash Redis stores the short-lived realtime snapshot and recent confirmed candles.
-The analyze route compresses the full feed before sending it to GPT.
-GPT remains the only decision authority.
+The deterministic decision engine consumes the live market feed and applies hard safety gates. No external model is required.
 
 ## Vercel environment variables
 
 Required:
 - SUPABASE_URL
 - SUPABASE_SERVICE_ROLE_KEY
-- OPENAI_API_KEY
 
 TradingView webhook path:
 - TV_WEBHOOK_SECRET
@@ -38,14 +36,14 @@ The candle primary key is source + instrument + timeframe + time_ms, so repeated
 
 Upstash Redis stores the latest realtime snapshot and the last 20 confirmed candles per timeframe with a short TTL.
 
-Before each GPT request, the previous Upstash snapshot is read so short-term price change context can be included without making Redis the authoritative market source.
+The previous Upstash snapshot may be read for short-term context without making Redis the authoritative market source.
 
 ## Verification
 
 After deployment:
 1. Call /api/memory and check the Redis configuration state.
-2. Trigger /api/analyze.
+2. Trigger `/api/confluence` or the institutional data pipeline.
 3. Confirm market_candles receives 1m, 5m, 15m, 1H, 4H and 1D rows for the active source.
 4. Confirm market_snapshots receives a current row.
-5. Confirm /api/analyze reports rawHistoricalCandlesSentToModel: false.
-6. Confirm GPT remains the only decision authority.
+5. Confirm the deterministic TITAN decision and hard gates are present.
+6. Confirm no external model/API is required for a trading decision.
