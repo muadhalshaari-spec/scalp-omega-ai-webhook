@@ -64,3 +64,6 @@ The `main` branch is the source of truth for the Vercel Production deployment.
 ## Safety
 
 Set both `TV_WEBHOOK_SECRET` and `SIGNAL_PROCESS_SECRET` in Vercel production. Never place exchange withdrawal permissions or private API keys in TradingView alerts.
+
+
+<!-- ChatGPT decision bridge deployment marker -->
