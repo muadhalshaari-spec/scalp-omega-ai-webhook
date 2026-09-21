@@ -1,6 +1,4 @@
 import { buildMarketContext } from '../lib/scalp-engine.js';
-import { buildConfluence } from '../lib/confluence-engine.js';
-import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 import { fetchDerivativeData } from '../lib/derivatives-data.js';
 import { fetchExternalIntelligence } from '../lib/external-intelligence.js';
 import { getFredMacroSnapshot, fredConfigured } from '../lib/fred.js';
@@ -428,16 +426,6 @@ export default async function handler(req, res) {
       externalIntelligence
     };
 
-    const confluence = buildConfluence({ features, contexts, market });
-    const institutional = buildInstitutionalAnalysis({
-      candlesByTf: candles,
-      market,
-      realtime: { orderBook, trades: tradesData.data || [] },
-      externalEvents: [],
-      externalIntelligence,
-      timestamp: Date.now()
-    });
-
     const newestCandleTs = Object.fromEntries(
       candleResults.map(([bar, data]) => [bar, data.at(-1)?.time ?? null])
     );
@@ -448,63 +436,18 @@ export default async function handler(req, res) {
       candleResults.map(([bar, data]) => [bar, data.filter((c) => c.confirmed).at(-1)?.time ?? null])
     );
 
-    const fullInstitutional = String(req.query?.full ?? '') === '1';
-    const compactTitan = institutional?.titan ? {
-      engine: institutional.titan.engine,
-      version: institutional.titan.version,
-      decision: institutional.titan.decision,
-      baseDecision: institutional.titan.baseDecision,
-      supportDirection: institutional.titan.supportDirection,
-      blocked: institutional.titan.blocked,
-      blockers: institutional.titan.blockers,
-      score: institutional.titan.score,
-      confidence: institutional.titan.confidence,
-      summary: institutional.titan.summary,
-      traces: (institutional.titan.traces || []).map((t) => ({
-        index:t.index,id:t.id,status:t.status,direction:t.direction,score:t.score,
-        confidence:t.confidence,blockers:t.blockers || []
-      })),
-      moduleStates: Object.fromEntries(Object.entries(institutional.titan.outputs || {}).map(([id,o]) => [id,{
-        status:o.state?.status,
-        direction:o.state?.direction,
-        score:o.state?.score,
-        confidence:o.state?.confidence,
-        blockers:o.state?.blockers || [],
-        errors:o.diagnostics?.errors || [],
-        warnings:o.diagnostics?.warnings || [],
-        gates:o.state?.gates || {},
-        metrics:o.result?.metrics || {}
-      }]))
-    } : null;
-
-    // Deterministic decision contract: TITAN is the local decision authority.
-    const titanDecision = institutional?.titan || null;
-    const { titan: _internalTitan, ...institutionalDataOnly } = institutional || {};
-    const apiInstitutional = institutionalDataOnly;
-
     const payload = {
       ok: true,
-      engine: 'SCALP-Ω Confluence Engine v1',
+      engine: 'SCALP-Ω Live Market Data Feed v4',
       source: 'OKX',
       instrument: instId,
-      analysisMode: 'CLOSED_CANDLES_ONLY',
+      analysisMode: 'DATA_FOR_CHATGPT',
+      decisionAuthority: 'CHATGPT_CONVERSATIONAL_ONLY',
+      decisionPolicy: 'CHATGPT_ONLY',
       fetchedAt: new Date().toISOString(),
       market,
       externalIntelligence,
       macroContext,
-      confluence,
-      decision: titanDecision ? {
-        engine: titanDecision.engine,
-        decision: titanDecision.decision,
-        baseDecision: titanDecision.baseDecision,
-        supportDirection: titanDecision.supportDirection,
-        blocked: titanDecision.blocked,
-        blockers: titanDecision.blockers,
-        score: titanDecision.score,
-        confidence: titanDecision.confidence,
-        summary: titanDecision.summary
-      } : null,
-      institutional: apiInstitutional,
       dataQuality: {
         candlesPerTimeframe: Object.fromEntries(
           candleResults.map(([bar, data]) => [bar, data.length])
