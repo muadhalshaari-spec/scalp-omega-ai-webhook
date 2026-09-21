@@ -5,6 +5,8 @@ import { getFredMacroSnapshot, fredConfigured } from '../lib/fred.js';
 import { getRecentLiquidations } from '../lib/supabase.js';
 import { waitUntil } from '@vercel/functions';
 import { persistMarketMemory } from '../lib/market-memory.js';
+import { buildInstitutionalLayer } from '../lib/institutional-layer.js';
+import { getMarketCandleCoverage } from '../lib/supabase.js';
 
 export const maxDuration = 60;
 
@@ -313,8 +315,8 @@ export default async function handler(req, res) {
 
     const [tickerData, bookData, tradesData, persistedLiquidationsResult, deribitKlinesResult] = await Promise.all([
       fetchJson(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`),
-      fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`),
-      fetchJson(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`),
+      fetchJson(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=400`),
+      fetchJson(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=500`),
       Promise.resolve(fetchPersistedLiquidations()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error})),
       Promise.resolve(fetchDeribitKlines()).then(v=>({ok:true,value:v})).catch(error=>({ok:false,error}))
     ]);
@@ -345,6 +347,16 @@ export default async function handler(req, res) {
         const closed = data.filter((c) => c.confirmed);
         return [bar, closed.length >= 20 ? buildMarketContext(closed, orderBook) : null];
       })
+    );
+
+    const persistedCoverage = Object.fromEntries(
+      await Promise.all(bars.map(async (timeframe) => {
+        try {
+          return [timeframe, await getMarketCandleCoverage({ source: 'OKX', instrument: instId, timeframe })];
+        } catch (error) {
+          return [timeframe, { configured: false, status: 'UNAVAILABLE', error: error?.message || String(error) }];
+        }
+      }))
     );
 
     const base15m = candles['15m'] || [];
@@ -426,6 +438,18 @@ export default async function handler(req, res) {
       externalIntelligence
     };
 
+    const institutionalLayer = buildInstitutionalLayer({
+      candlesByTf: candles,
+      features,
+      contexts,
+      orderBook,
+      trades: tradesData.data || [],
+      externalIntelligence,
+      derivatives: derivativesData,
+      coverage: persistedCoverage
+    });
+    market.institutionalLayer = institutionalLayer;
+
     const newestCandleTs = Object.fromEntries(
       candleResults.map(([bar, data]) => [bar, data.at(-1)?.time ?? null])
     );
@@ -481,6 +505,7 @@ export default async function handler(req, res) {
     const memoryFeed = {
       source: 'OKX', instrument: instId, fetchedAt: payload.fetchedAt,
       market: { ...market, candlesByTf: candles },
+      institutionalLayer,
       featureSummary: payload.featureSummary, dataQuality: payload.dataQuality
     };
     const memoryLive = {
