@@ -1,16 +1,19 @@
 # SCALP-Ω Production Activation
 
-## Current memory architecture
+## Current architecture
 
-market data -> SCALP-Ω -> deterministic TITAN/confluence/risk engines -> trading decision
+market data -> SCALP-Ω collection/feature layer -> ChatGPT analysis -> LONG / SHORT / NO_TRADE
 
-Supabase stores the large historical candle set and durable market snapshots.
+SCALP-Ω is the market-data and evidence layer. It collects, normalizes, validates, and persists market observations. **ChatGPT is the sole decision authority for the conversational trading workflow.**
+
+Supabase stores large historical candle sets and durable market snapshots.
 Upstash Redis stores the short-lived realtime snapshot and recent confirmed candles.
-The deterministic decision engine consumes the live market feed and applies hard safety gates. No external model is required.
+
+Deterministic TITAN modules may derive indicators, statistics, data-quality checks, research diagnostics, and market observations. They are not the final conversational trading authority.
 
 ## Vercel environment variables
 
-Required:
+Required for the data/persistence path:
 - SUPABASE_URL
 - SUPABASE_SERVICE_ROLE_KEY
 
@@ -26,24 +29,41 @@ Realtime Redis memory:
 - UPSTASH_REDIS_REST_URL
 - UPSTASH_REDIS_REST_TOKEN
 
+Optional market/macro connectors may include FRED, Binance, Bybit, and Deribit credentials as configured.
+
 Never commit secret values to GitHub.
 
 ## Memory behavior
 
-Every AI analysis request asynchronously upserts the available 1000-bar candle sets into public.market_candles and stores a compact snapshot in public.market_snapshots.
+Every primary market-data request asynchronously upserts the available 1000-bar candle sets into market persistence and stores a compact realtime snapshot.
 
 The candle primary key is source + instrument + timeframe + time_ms, so repeated requests update the same candles instead of creating duplicates.
 
-Upstash Redis stores the latest realtime snapshot and the last 20 confirmed candles per timeframe with a short TTL.
+Upstash Redis stores the latest realtime snapshot and recent confirmed candles with a short TTL.
 
 The previous Upstash snapshot may be read for short-term context without making Redis the authoritative market source.
+
+## ChatGPT data-feed contract
+
+The live feed must expose:
+- analysisMode: DATA_FOR_CHATGPT
+- decisionAuthority: CHATGPT_CONVERSATIONAL_ONLY
+- decisionPolicy: CHATGPT_ONLY
+
+The feed must not emit the final conversational trade decision. It supplies the evidence; ChatGPT performs the reasoning and returns LONG, SHORT, or NO_TRADE.
 
 ## Verification
 
 After deployment:
-1. Call /api/memory and check the Redis configuration state.
-2. Trigger `/api/confluence` or the institutional data pipeline.
-3. Confirm market_candles receives 1m, 5m, 15m, 1H, 4H and 1D rows for the active source.
-4. Confirm market_snapshots receives a current row.
-5. Confirm the deterministic TITAN decision and hard gates are present.
-6. Confirm no external model/API is required for a trading decision.
+1. Call /api/confluence and confirm HTTP 200 plus the ChatGPT-only contract.
+2. Call /api/institutional and confirm it returns market evidence only.
+3. Call /api/chatgpt-feed and confirm it returns the same live evidence with finalDecision: null.
+4. Confirm market candles are available for 1m, 5m, 15m, 1H, 4H and 1D when upstream data is available.
+5. Confirm Supabase/Upstash persistence is configured as expected.
+6. Confirm no external model API or model key is required by the application for the conversational decision path.
+
+## Research integrity
+
+Closed-candle information is used for structural confirmation to avoid lookahead. Historical alignment remains as-of the relevant decision timestamp in research/backtest modules.
+
+Scores and confidence values are evidence-strength measures, not validated probabilities of winning.
