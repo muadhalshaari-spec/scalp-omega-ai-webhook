@@ -477,8 +477,8 @@ export default async function handler(req, res) {
       }]))
     } : null;
 
-    // DATA-ONLY CONTRACT: TITAN may remain an internal diagnostic engine,
-    // but its decisions/scores/confidence are never exposed to upstream callers.
+    // Deterministic decision contract: TITAN is the local decision authority.
+    const titanDecision = institutional?.titan || null;
     const { titan: _internalTitan, ...institutionalDataOnly } = institutional || {};
     const apiInstitutional = institutionalDataOnly;
 
@@ -493,6 +493,17 @@ export default async function handler(req, res) {
       externalIntelligence,
       macroContext,
       confluence,
+      decision: titanDecision ? {
+        engine: titanDecision.engine,
+        decision: titanDecision.decision,
+        baseDecision: titanDecision.baseDecision,
+        supportDirection: titanDecision.supportDirection,
+        blocked: titanDecision.blocked,
+        blockers: titanDecision.blockers,
+        score: titanDecision.score,
+        confidence: titanDecision.confidence,
+        summary: titanDecision.summary
+      } : null,
       institutional: apiInstitutional,
       dataQuality: {
         candlesPerTimeframe: Object.fromEntries(
