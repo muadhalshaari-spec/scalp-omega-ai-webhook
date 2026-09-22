@@ -10,5 +10,8 @@
       "source": "/api/live-state",
       "destination": "/api/live-stream"
     }
+  ],
+  "regions": [
+    "dxb1"
   ]
 }
