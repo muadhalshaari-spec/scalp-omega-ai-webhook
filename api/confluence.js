@@ -411,6 +411,7 @@ export default async function handler(req, res) {
 
     const indicatorFeatures = build35IndicatorPack({ candlesByTf: candles, market: { price: ticker ? Number(ticker.last) : null, orderBook, trades: tradesData.data || [] }, externalIntelligence, derivatives: derivativesData, timestamp: Date.now() });
     const indicatorPersistence = await insertIndicatorFeatures(indicatorFeatures.persistenceRows).catch(error => ({ configured:true, persisted:false, status:'ERROR', error:error?.message || String(error) }));
+    indicatorFeatures.persistenceRows = [];
     const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
 
@@ -439,9 +440,7 @@ export default async function handler(req, res) {
       liquidations: persistedLiquidationsResult?.ok ? (persistedLiquidationsResult.value || []) : [],
       liquidationHistory: persistedLiquidationsResult?.ok ? (persistedLiquidationsResult.value || []) : [],
       instrument: instId,
-      externalIntelligence,
-      indicatorFeatures,
-      indicatorPersistence
+      externalIntelligence
     };
 
     const institutionalLayer = buildInstitutionalLayer({
