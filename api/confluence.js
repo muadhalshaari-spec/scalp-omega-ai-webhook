@@ -409,11 +409,18 @@ export default async function handler(req, res) {
 
     externalIntelligence.persistedHistory = relayHistory;
 
-    const indicatorFeatures = build35IndicatorPack({ candlesByTf: candles, market: { price: ticker ? Number(ticker.last) : null, orderBook, trades: tradesData.data || [] }, externalIntelligence, derivatives: derivativesData, timestamp: Date.now() });
-    const indicatorPersistence = await insertIndicatorFeatures(indicatorFeatures.persistenceRows).catch(error => ({ configured:true, persisted:false, status:'ERROR', error:error?.message || String(error) }));
-    indicatorFeatures.persistenceRows = [];
     const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
+
+    const indicatorFeatures = build35IndicatorPack({
+      candlesByTf: candles,
+      market: { price: ticker ? Number(ticker.last) : null, orderBook, trades: tradesData.data || [] },
+      externalIntelligence,
+      derivatives: derivativesData,
+      timestamp: Date.now()
+    });
+    const indicatorPersistence = await insertIndicatorFeatures(indicatorFeatures.persistenceRows).catch(error => ({ configured:true, persisted:false, status:'ERROR', error:error?.message || String(error) }));
+    indicatorFeatures.persistenceRows = [];
 
     const market = {
       price: ticker ? Number(ticker.last) : null,
