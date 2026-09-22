@@ -8,6 +8,7 @@ import { persistMarketMemory } from '../lib/market-memory.js';
 import { buildInstitutionalLayer } from '../lib/institutional-layer.js';
 import { getMarketCandleCoverage, insertIndicatorFeatures } from '../lib/supabase.js';
 import { build35IndicatorPack } from '../lib/indicators/engine.js';
+import { compactAiInput } from '../lib/ai-context-compact.js';
 
 export const maxDuration = 60;
 
@@ -504,6 +505,7 @@ export default async function handler(req, res) {
         )
       },
       indicatorFeatures,
+      indicatorPersistence,
       featureSummary: Object.fromEntries(
         Object.entries(features).map(([bar, f]) => [
           bar,
@@ -528,6 +530,17 @@ export default async function handler(req, res) {
       orderBook
     };
     waitUntil(persistMarketMemory(memoryFeed, memoryLive).catch(() => null));
+
+    // Compact mode keeps the same data contract while avoiding multi-megabyte raw payloads.
+    if (req.query?.compact === '1') {
+      const compact = compactAiInput(payload);
+      compact.indicatorPersistence = indicatorPersistence;
+      compact.fullDataEndpoint = '/api/confluence?dataOnly=1';
+      compact.fullHistoryStore = 'SUPABASE';
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      return res.status(200).send(JSON.stringify(compact, null, 2));
+    }
 
     // Return stable, human-readable English JSON for clean copy/paste.
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
