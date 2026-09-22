@@ -4,6 +4,7 @@ import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
 import { getBybitPrivateAccount } from '../lib/bybit-private.js';
 import { persistBybitAccountSnapshot } from '../lib/bybit-account-store.js';
 
+// Bybit private egress is pinned via vercel.json region configuration.
 export default async function handler(req,res){
   if(req.method!=='GET')return res.status(405).json({ok:false,error:'Method not allowed'});
   const includeBybitAccount = req.query?.includeAccount === '1';
