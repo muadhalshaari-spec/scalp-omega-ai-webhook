@@ -5,7 +5,7 @@ export const maxDuration = 20;
 function authorized(req){
   const expected=process.env.WEBHOOK_SECRET;
   if(!expected) return false;
-  const supplied=req.headers['x-webhook-secret'] || req.headers.authorization?.replace(/^Bearer\\s+/i,'');
+  const supplied=req.headers['x-webhook-secret'] || req.headers.authorization?.replace(/^Bearer\s+/i,'');
   return supplied===expected;
 }
 
