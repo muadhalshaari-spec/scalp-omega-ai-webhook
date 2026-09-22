@@ -125,3 +125,10 @@ create index if not exists market_snapshots_source_lookup_idx on public.market_s
 alter table public.market_snapshots enable row level security;
 drop policy if exists market_snapshots_deny_all on public.market_snapshots;
 create policy market_snapshots_deny_all on public.market_snapshots for all using (false) with check (false);
+
+create table if not exists public.indicator_features (indicator_id text not null,indicator_name text not null,category text not null,instrument text not null,timeframe text not null,event_ts timestamptz not null,source text not null default 'SCALP_OMEGA_SEMANTIC35',payload jsonb not null default '{}'::jsonb,created_at timestamptz not null default now(),primary key(indicator_id,instrument,timeframe,event_ts));
+create index if not exists indicator_features_lookup_idx on public.indicator_features(instrument,timeframe,event_ts desc);
+create index if not exists indicator_features_indicator_idx on public.indicator_features(indicator_id,instrument,timeframe,event_ts desc);
+alter table public.indicator_features enable row level security;
+drop policy if exists indicator_features_deny_all on public.indicator_features;
+create policy indicator_features_deny_all on public.indicator_features for all using(false) with check(false);

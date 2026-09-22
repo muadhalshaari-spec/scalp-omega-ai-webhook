@@ -126,6 +126,7 @@ export default async function handler(req,res){
       timestamp: persistAt,
       instrument: persistencePayload.instrument,
       featureSummary: data.featureSummary || {},
+      indicatorFeatures: data.indicatorFeatures || null,
       dataQuality: data.dataQuality || {},
       market: { price: data.market?.price ?? null, openInterest: data.market?.openInterest ?? null, fundingRate: data.market?.fundingRate ?? null },
       titan55: { decision: null, score: titan55.score, confidence: titan55.confidence }
@@ -141,6 +142,6 @@ export default async function handler(req,res){
       systemEvent: persistResults[2].status === 'fulfilled' ? persistResults[2].value : { persisted: false, status: 'ERROR', error: String(persistResults[2].reason?.message || persistResults[2].reason) }
     };
 
-    return res.status(200).json({ok:true,engine:'SCALP-Ω Market Data Feed v5',bybitPrivateAccountStatus,decisionAuthority:'CHATGPT_CONVERSATIONAL_ONLY',decisionPolicy:'CHATGPT_ONLY',source:data.source,instrument:data.instrument,fetchedAt:data.fetchedAt,analysisMode:'DATA_FOR_CHATGPT',market:data.market,features:data.features,contexts:data.contexts,externalIntelligence:data.externalIntelligence,institutionalLayer:data.institutionalLayer||data.market?.institutionalLayer||null,macroContext:data.macroContext||null,observations:data.observations,dataQuality:data.dataQuality,featureSummary:data.featureSummary,titan55,titanPersistence,memory:{historicalStore:'SUPABASE',realtimeStore:'UPSTASH_REDIS',upstashConfigured:memory.configured,upstashLiveSnapshotCached:memory.value!==null,upstashUpdatedAt:memory.value?.updatedAt||null,microstructureHistory:mhSummary,historicalCoverageBySource:coverageMatrix}});
+    return res.status(200).json({ok:true,engine:'SCALP-Ω Market Data Feed v5',bybitPrivateAccountStatus,decisionAuthority:'CHATGPT_CONVERSATIONAL_ONLY',decisionPolicy:'CHATGPT_ONLY',source:data.source,instrument:data.instrument,fetchedAt:data.fetchedAt,analysisMode:'DATA_FOR_CHATGPT',market:data.market,features:data.features,contexts:data.contexts,externalIntelligence:data.externalIntelligence,institutionalLayer:data.institutionalLayer||data.market?.institutionalLayer||null,macroContext:data.macroContext||null,observations:data.observations,dataQuality:data.dataQuality,featureSummary:data.featureSummary,indicatorFeatures:data.indicatorFeatures||null,titan55,titanPersistence,memory:{historicalStore:'SUPABASE',realtimeStore:'UPSTASH_REDIS',upstashConfigured:memory.configured,upstashLiveSnapshotCached:memory.value!==null,upstashUpdatedAt:memory.value?.updatedAt||null,microstructureHistory:mhSummary,historicalCoverageBySource:coverageMatrix}});
   }catch(e){return res.status(502).json({ok:false,error:e?.message||String(e)})}
 }

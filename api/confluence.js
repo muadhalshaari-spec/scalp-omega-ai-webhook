@@ -6,7 +6,8 @@ import { getRecentLiquidations } from '../lib/supabase.js';
 import { waitUntil } from '@vercel/functions';
 import { persistMarketMemory } from '../lib/market-memory.js';
 import { buildInstitutionalLayer } from '../lib/institutional-layer.js';
-import { getMarketCandleCoverage } from '../lib/supabase.js';
+import { getMarketCandleCoverage, insertIndicatorFeatures } from '../lib/supabase.js';
+import { build35IndicatorPack } from '../lib/indicators/engine.js';
 
 export const maxDuration = 60;
 
@@ -408,6 +409,8 @@ export default async function handler(req, res) {
 
     externalIntelligence.persistedHistory = relayHistory;
 
+    const indicatorFeatures = build35IndicatorPack({ candlesByTf: candles, market: { price: ticker ? Number(ticker.last) : null, orderBook, trades: tradesData.data || [] }, externalIntelligence, derivatives: derivativesData, timestamp: Date.now() });
+    const indicatorPersistence = await insertIndicatorFeatures(indicatorFeatures.persistenceRows).catch(error => ({ configured:true, persisted:false, status:'ERROR', error:error?.message || String(error) }));
     const derivativesCurrent = derivativesData.current || {};
     const ticker = tickerData.data?.[0] || null;
 
@@ -436,7 +439,9 @@ export default async function handler(req, res) {
       liquidations: persistedLiquidationsResult?.ok ? (persistedLiquidationsResult.value || []) : [],
       liquidationHistory: persistedLiquidationsResult?.ok ? (persistedLiquidationsResult.value || []) : [],
       instrument: instId,
-      externalIntelligence
+      externalIntelligence,
+      indicatorFeatures,
+      indicatorPersistence
     };
 
     const institutionalLayer = buildInstitutionalLayer({
@@ -492,6 +497,7 @@ export default async function handler(req, res) {
           candleResults.map(([bar, data]) => [bar, (data.length < 2 || data[0].time <= data.at(-1).time)])
         )
       },
+      indicatorFeatures,
       featureSummary: Object.fromEntries(
         Object.entries(features).map(([bar, f]) => [
           bar,
