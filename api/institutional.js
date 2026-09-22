@@ -1,16 +1,27 @@
 import { getLiveMemory } from '../lib/market-memory.js';
 import { getMarketCandleCoverageMatrix, getMicrostructureHistory, insertTitanSnapshot, insertTitanFeature, insertTitanSystemEvent } from '../lib/supabase.js';
 import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
+import { getBybitPrivateAccount } from '../lib/bybit-private.js';
+import { persistBybitAccountSnapshot } from '../lib/bybit-account-store.js';
 
 export default async function handler(req,res){
   if(req.method!=='GET')return res.status(405).json({ok:false,error:'Method not allowed'});
+  const includeBybitAccount = req.query?.includeAccount === '1';
   const host=typeof req.headers.host==='string'?req.headers.host:'scalp-omega-ai-webhook.vercel.app';
   try{
     const r=await fetch('https://'+host+'/api/confluence?dataOnly=1&ts='+Date.now(),{cache:'no-store',headers:{Accept:'application/json'}});
-    const [memory, microHistory, coverageMatrix] = await Promise.all([
+    const [memory, microHistory, coverageMatrix, bybitAccountResult] = await Promise.all([
       getLiveMemory().catch(()=>({configured:false,value:null})),
       getMicrostructureHistory({ source:'OKX', instrument:'ETH-USDT-SWAP', limit:1000 }).catch(()=>({configured:false,rows:[]})),
-      getMarketCandleCoverageMatrix().catch(()=>({}))
+      getMarketCandleCoverageMatrix().catch(()=>({})),
+      includeBybitAccount
+        ? getBybitPrivateAccount().catch(error => ({
+            configured: Boolean(process.env.BYBIT_API_KEY && process.env.BYBIT_API_SECRET),
+            available: false,
+            source: 'BYBIT_PRIVATE',
+            error: error?.message || String(error)
+          }))
+        : null
     ]);
     const mhRows=Array.isArray(microHistory.rows)?microHistory.rows:[];
     const mhCompact=mhRows.slice(0,240).map(x=>({
@@ -41,6 +52,22 @@ export default async function handler(req,res){
       samples:mhCompact,
       rawPersistence:'DEEP_BOOK_AND_RECENT_TRADES_PERSISTED_PER_MINUTE'
     };
+    const bybitPersistence = includeBybitAccount && bybitAccountResult?.available === true
+      ? await persistBybitAccountSnapshot(bybitAccountResult).catch(error => ({configured:true,persisted:false,status:'ERROR',error:error?.message||String(error)}))
+      : null;
+    const bybitPrivateAccountStatus = includeBybitAccount ? {
+      requested: true,
+      configured: bybitAccountResult?.configured === true,
+      available: bybitAccountResult?.available === true,
+      source: bybitAccountResult?.source || 'BYBIT_PRIVATE',
+      environment: bybitAccountResult?.environment || null,
+      fetchedAt: bybitAccountResult?.fetchedAt || null,
+      positionPresent: bybitAccountResult?.position ? true : false,
+      openOrderCount: Number(bybitAccountResult?.openOrders?.count ?? 0),
+      persistence: bybitPersistence || {configured:false,persisted:false,status:'NOT_REQUESTED'},
+      accountDataReturned: false,
+      error: bybitAccountResult?.available === false ? (bybitAccountResult?.error || null) : null
+    } : {requested:false,accountDataReturned:false};
     const text=await r.text();let data;try{data=JSON.parse(text)}catch{data=null}
     if(!r.ok||!data?.ok)return res.status(502).json({ok:false,error:data?.error||text.slice(0,500)});
     const liveTitan = buildInstitutionalAnalysis({
@@ -113,6 +140,6 @@ export default async function handler(req,res){
       systemEvent: persistResults[2].status === 'fulfilled' ? persistResults[2].value : { persisted: false, status: 'ERROR', error: String(persistResults[2].reason?.message || persistResults[2].reason) }
     };
 
-    return res.status(200).json({ok:true,engine:'SCALP-Ω Market Data Feed v5',decisionAuthority:'CHATGPT_CONVERSATIONAL_ONLY',decisionPolicy:'CHATGPT_ONLY',source:data.source,instrument:data.instrument,fetchedAt:data.fetchedAt,analysisMode:'DATA_FOR_CHATGPT',market:data.market,features:data.features,contexts:data.contexts,externalIntelligence:data.externalIntelligence,institutionalLayer:data.institutionalLayer||data.market?.institutionalLayer||null,macroContext:data.macroContext||null,observations:data.observations,dataQuality:data.dataQuality,featureSummary:data.featureSummary,titan55,titanPersistence,memory:{historicalStore:'SUPABASE',realtimeStore:'UPSTASH_REDIS',upstashConfigured:memory.configured,upstashLiveSnapshotCached:memory.value!==null,upstashUpdatedAt:memory.value?.updatedAt||null,microstructureHistory:mhSummary,historicalCoverageBySource:coverageMatrix}});
+    return res.status(200).json({ok:true,engine:'SCALP-Ω Market Data Feed v5',bybitPrivateAccountStatus,decisionAuthority:'CHATGPT_CONVERSATIONAL_ONLY',decisionPolicy:'CHATGPT_ONLY',source:data.source,instrument:data.instrument,fetchedAt:data.fetchedAt,analysisMode:'DATA_FOR_CHATGPT',market:data.market,features:data.features,contexts:data.contexts,externalIntelligence:data.externalIntelligence,institutionalLayer:data.institutionalLayer||data.market?.institutionalLayer||null,macroContext:data.macroContext||null,observations:data.observations,dataQuality:data.dataQuality,featureSummary:data.featureSummary,titan55,titanPersistence,memory:{historicalStore:'SUPABASE',realtimeStore:'UPSTASH_REDIS',upstashConfigured:memory.configured,upstashLiveSnapshotCached:memory.value!==null,upstashUpdatedAt:memory.value?.updatedAt||null,microstructureHistory:mhSummary,historicalCoverageBySource:coverageMatrix}});
   }catch(e){return res.status(502).json({ok:false,error:e?.message||String(e)})}
 }
