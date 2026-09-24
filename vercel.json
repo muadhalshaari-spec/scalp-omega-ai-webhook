@@ -14,7 +14,7 @@
   "crons": [
     {
       "path": "/api/history-sync?mode=scheduled",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 0 * * *"
     }
   ],
   "regions": [
