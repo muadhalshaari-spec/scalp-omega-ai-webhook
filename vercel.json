@@ -7,6 +7,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/history-sync",
+      "destination": "/api/confluence?historySync=1"
+    },
+    {
       "source": "/api/live-state",
       "destination": "/api/live-stream"
     }

@@ -9,12 +9,14 @@ import { buildInstitutionalLayer } from '../lib/institutional-layer.js';
 import { getMarketCandleCoverage, insertIndicatorFeatures } from '../lib/supabase.js';
 import { build35IndicatorPack } from '../lib/indicators/engine.js';
 import { compactAiInput } from '../lib/ai-context-compact.js';
+import historySyncHandler from '../lib/history-sync-handler.js';
 
 export const maxDuration = 60;
 
 const DERIBIT_PUBLIC_BASE = (process.env.DERIBIT_BASE_URL || ((process.env.DERIBIT_ENV || 'testnet').toLowerCase() === 'production' ? 'https://www.deribit.com/api/v2' : 'https://test.deribit.com/api/v2')) + '/public';
 
 export default async function handler(req, res) {
+  if (req.query?.historySync === '1') return historySyncHandler(req, res);
   if (req.method !== 'GET') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
