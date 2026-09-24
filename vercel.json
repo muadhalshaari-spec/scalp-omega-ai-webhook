@@ -11,6 +11,12 @@
       "destination": "/api/live-stream"
     }
   ],
+  "crons": [
+    {
+      "path": "/api/history-sync?mode=scheduled",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "regions": [
     "bom1"
   ]
