@@ -12,7 +12,7 @@ export default async function handler(req,res){
   const host=typeof req.headers.host==='string'?req.headers.host:'scalp-omega-ai-webhook.vercel.app';
   try{
     const r=await fetch('https://'+host+'/api/confluence?dataOnly=1&ts='+Date.now(),{cache:'no-store',headers:{Accept:'application/json'}});
-    const [memory, microHistory, coverageMatrix, bybitAccountResult] = await Promise.all([
+    const [memory, microHistory, coverageMatrix, bybitAccountResult, liveStreamResult] = await Promise.all([
       getLiveMemory().catch(()=>({configured:false,value:null})),
       getMicrostructureHistory({ source:'OKX', instrument:'ETH-USDT-SWAP', limit:1000 }).catch(()=>({configured:false,rows:[]})),
       getMarketCandleCoverageMatrix().catch(()=>({})),
@@ -23,7 +23,10 @@ export default async function handler(req,res){
             source: 'BYBIT_PRIVATE',
             error: error?.message || String(error)
           }))
-        : null
+        : null,
+      fetch('https://'+host+'/api/live-state?ts='+Date.now(),{cache:'no-store',headers:{Accept:'application/json'}})
+        .then(async response => ({ ok: response.ok, value: await response.json().catch(() => null) }))
+        .catch(() => ({ ok:false, value:null }))
     ]);
     const mhRows=Array.isArray(microHistory.rows)?microHistory.rows:[];
     const mhCompact=mhRows.slice(0,240).map(x=>({
@@ -143,8 +146,19 @@ export default async function handler(req,res){
       feature: persistResults[1].status === 'fulfilled' ? persistResults[1].value : { persisted: false, status: 'ERROR', error: String(persistResults[1].reason?.message || persistResults[1].reason) },
       systemEvent: persistResults[2].status === 'fulfilled' ? persistResults[2].value : { persisted: false, status: 'ERROR', error: String(persistResults[2].reason?.message || persistResults[2].reason) }
     };
+    const liveStream = liveStreamResult?.ok ? liveStreamResult.value : null;
+    const liveStreamUpdatedAtMs = Date.parse(liveStream?.updatedAt || '') || null;
+    const liveStreamAgeMs = liveStreamUpdatedAtMs ? Math.max(0, Date.now() - liveStreamUpdatedAtMs) : null;
+    const realtimeQuality = {
+      available: Boolean(liveStream),
+      connected: liveStream?.connected === true,
+      dataReady: liveStream?.dataReady === true,
+      ageMs: liveStreamAgeMs,
+      freshWithin30s: liveStreamAgeMs != null && liveStreamAgeMs <= 30_000,
+      missingChannels: Array.isArray(liveStream?.missingChannels) ? liveStream.missingChannels : []
+    };
 
-    const responsePayload={ok:true,engine:'SCALP-Ω Market Data Feed v5',bybitPrivateAccountStatus,decisionAuthority:'CHATGPT_CONVERSATIONAL_ONLY',decisionPolicy:'CHATGPT_ONLY',source:data.source,instrument:data.instrument,fetchedAt:data.fetchedAt,analysisMode:'DATA_FOR_CHATGPT',market:data.market,features:data.features,contexts:data.contexts,externalIntelligence:data.externalIntelligence,institutionalLayer:data.institutionalLayer||data.market?.institutionalLayer||null,macroContext:data.macroContext||null,observations:data.observations,dataQuality:data.dataQuality,featureSummary:data.featureSummary,indicatorFeatures:data.indicatorFeatures||null,titan55,titanPersistence,qualityGates:liveTitan.qualityGates||null,realtimeMemory:{configured:memory.configured,key:memory.key,value:memory.value},memory:{historicalStore:'SUPABASE',realtimeStore:'UPSTASH_REDIS',upstashConfigured:memory.configured,upstashLiveSnapshotCached:memory.value!==null,upstashUpdatedAt:memory.value?.updatedAt||null,microstructureHistory:mhSummary,historicalCoverageBySource:coverageMatrix}};
+    const responsePayload={ok:true,engine:'SCALP-Ω Market Data Feed v5',bybitPrivateAccountStatus,decisionAuthority:'CHATGPT_CONVERSATIONAL_ONLY',decisionPolicy:'CHATGPT_ONLY',source:data.source,instrument:data.instrument,fetchedAt:data.fetchedAt,analysisMode:'DATA_FOR_CHATGPT',market:data.market,features:data.features,contexts:data.contexts,externalIntelligence:data.externalIntelligence,institutionalLayer:data.institutionalLayer||data.market?.institutionalLayer||null,macroContext:data.macroContext||null,observations:data.observations,dataQuality:{...(data.dataQuality||{}),realtimeQuality},featureSummary:data.featureSummary,indicatorFeatures:data.indicatorFeatures||null,titan55,titanPersistence,qualityGates:liveTitan.qualityGates||null,realtimeMemory:{configured:memory.configured,key:memory.key,value:memory.value},realtimeStream:liveStream || { ok:false, error:'LIVE_STREAM_UNAVAILABLE' },memory:{historicalStore:'SUPABASE',realtimeStore:'UPSTASH_REDIS',upstashConfigured:memory.configured,upstashLiveSnapshotCached:memory.value!==null,upstashUpdatedAt:memory.value?.updatedAt||null,microstructureHistory:mhSummary,historicalCoverageBySource:coverageMatrix}};
     if(req.query?.compact==='1') return res.status(200).json({...compactAiInput(responsePayload),ok:true,titan55,indicatorPersistence:{configured:true,persisted:true},bybitPrivateAccountStatus});
     return res.status(200).json(responsePayload);
   }catch(e){return res.status(502).json({ok:false,error:e?.message||String(e)})}
