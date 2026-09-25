@@ -17,8 +17,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       engine: 'SCALP-Ω Binance Full Market Data Adapter v2',
-      decisionAuthority: 'TITAN_DETERMINISTIC',
-      decisionPolicy: 'BINANCE_DATA_ONLY_NO_DECISION',
+      decisionAuthority: 'CHATGPT_CONVERSATIONAL_ONLY',
+      decisionPolicy: 'BINANCE_DATA_ONLY_CHATGPT_ONLY',
       ...data
     });
   } catch (error) {
