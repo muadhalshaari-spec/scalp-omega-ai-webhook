@@ -1,3 +1,175 @@
+import { createMcpHandler } from 'mcp-handler';
+import { z } from 'zod';
+
+const MCP_INSTRUCTIONS = [
+  'SCALP-Ω is a read-only evidence gateway for ChatGPT.',
+  'ChatGPT is the conversational decision authority; this server never emits an executable trade order and never exposes withdrawal capability.',
+  'Market evidence is time-sensitive; always inspect fetchedAt/asOf and dataQuality.',
+  'OHLC candles alone cannot prove account fills or the intrabar sequence of entry and stop events.',
+  'A setup is time-bounded and must be revalidated against current regime, microstructure, cross-exchange state, derivatives, macro, and news before use.',
+  'When evidence is stale or incomplete, prefer NO_TRADE rather than inventing certainty.'
+].join(' ');
+
+const MCP_BASE_URL = String(
+  process.env.SCALP_PUBLIC_BASE_URL ||
+  (process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'https://scalp-omega-ai-webhook.vercel.app')
+).replace(/\/$/, '');
+
+async function mcpFetchJson(path) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 50_000);
+  try {
+    const response = await fetch(MCP_BASE_URL + path, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: { Accept: 'application/json', 'User-Agent': 'SCALP-Omega-MCP/1.0' }
+    });
+    const body = await response.text();
+    let data = null;
+    try { data = JSON.parse(body); } catch {}
+    if (!response.ok || !data?.ok) {
+      throw new Error('SCALP-Ω upstream ' + response.status + ': ' + (data?.error || body.slice(0, 300)));
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const mcpResult = value => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] });
+const mcpNum = value => Number.isFinite(Number(value)) ? Number(value) : null;
+const mcpMs = value => { const ms = Date.parse(String(value)); return Number.isFinite(ms) ? ms : null; };
+
+const scalpMcpHandler = createMcpHandler(
+  server => {
+    server.registerTool('scalp_omega_live_market', {
+      title: 'SCALP-Ω Live Market',
+      description: 'Read-only unified live market evidence for ETH-USDT-SWAP: multi-timeframe candles, indicators, derivatives, order book/trades, cross-exchange verification, liquidations, institutional layer, macro/news/on-chain context, and data quality.',
+      inputSchema: z.object({ compact: z.boolean().optional().default(true) })
+    }, async ({ compact }) => mcpResult(await mcpFetchJson(compact ? '/api/institutional?compact=1' : '/api/institutional')));
+
+    server.registerTool('scalp_omega_provider_health', {
+      title: 'SCALP-Ω Provider Health',
+      description: 'Read-only provider and freshness audit. Missing credentials, partial providers, coverage, and quality gates are reported without secrets.',
+      inputSchema: z.object({})
+    }, async () => {
+      const data = await mcpFetchJson('/api/confluence?compact=1');
+      return mcpResult({
+        fetchedAt: data.fetchedAt || null,
+        instrument: data.instrument || 'ETH-USDT-SWAP',
+        engine: data.engine || null,
+        dataQuality: data.dataQuality || null,
+        indicatorPersistence: data.indicatorPersistence || null,
+        qualityGates: data.qualityGates || null,
+        crossExchange: data.externalIntelligence?.crossExchange || null,
+        providers: data.externalIntelligence?.providers || null,
+        note: 'Read-only health snapshot; secrets are never returned.'
+      });
+    });
+
+    server.registerTool('scalp_omega_external_context', {
+      title: 'SCALP-Ω External Context',
+      description: 'Read-only external context: cross-exchange derivatives, Deribit options, CoinGlass when configured, on-chain providers, macro series, news, and contextual sentiment.',
+      inputSchema: z.object({})
+    }, async () => {
+      const data = await mcpFetchJson('/api/institutional?compact=1');
+      return mcpResult({
+        fetchedAt: data.fetchedAt || null,
+        crossExchange: data.externalIntelligence?.crossExchange || null,
+        providers: data.externalIntelligence?.providers || null,
+        onchain: data.externalIntelligence?.onchain || null,
+        news: data.externalIntelligence?.news || null,
+        macroContext: data.macroContext || null,
+        dataQuality: data.externalIntelligence?.dataQuality || null,
+        contextPolicy: 'Context only; combine with current market structure and data-quality gates.'
+      });
+    });
+
+    server.registerTool('scalp_omega_trade_audit', {
+      title: 'SCALP-Ω Trade Audit',
+      description: 'Read-only historical setup audit. Finds the first post-placement candle eligible to touch entry, stop and targets, and flags same-candle ambiguity. It never claims an account fill.',
+      inputSchema: z.object({
+        orderPlacementUtc: z.string().describe('UTC ISO-8601 timestamp, e.g. 2026-09-24T18:45:00Z'),
+        entryPrice: z.number().positive(),
+        stopLossPrice: z.number().positive(),
+        takeProfitPrices: z.array(z.number().positive()).optional().default([]),
+        timeframe: z.enum(['1m', '5m', '15m', '1H', '4H', '1D']).optional().default('15m'),
+        source: z.string().optional().default('OKX'),
+        instrument: z.string().optional().default('ETH-USDT-SWAP'),
+        lookbackBars: z.number().int().min(50).max(1000).optional().default(1000)
+      })
+    }, async ({ orderPlacementUtc, entryPrice, stopLossPrice, takeProfitPrices, timeframe, source, instrument, lookbackBars }) => {
+      const placementMs = mcpMs(orderPlacementUtc);
+      if (placementMs == null) return mcpResult({ ok: false, error: 'Invalid orderPlacementUtc. Use ISO-8601 UTC.' });
+      const result = await getRecentMarketCandles({ source, instrument, timeframe, limit: lookbackBars });
+      const candles = (result.rows || []).map(c => ({
+        time_ms: mcpNum(c.time_ms), open: mcpNum(c.open), high: mcpNum(c.high), low: mcpNum(c.low), close: mcpNum(c.close),
+        volume: mcpNum(c.volume), confirmed: c.confirmed === true
+      })).filter(c => Number.isFinite(c.time_ms) && c.time_ms >= placementMs && [c.open,c.high,c.low,c.close].every(Number.isFinite))
+        .sort((a,b) => a.time_ms - b.time_ms);
+      const side = stopLossPrice > entryPrice ? 'SHORT' : stopLossPrice < entryPrice ? 'LONG' : 'UNKNOWN';
+      const firstEntry = candles.find(c => side === 'SHORT' ? c.high >= entryPrice : c.low <= entryPrice) || null;
+      let firstStop = null;
+      if (firstEntry) {
+        const idx = candles.findIndex(c => c.time_ms === firstEntry.time_ms);
+        firstStop = candles.slice(idx).find(c => side === 'SHORT' ? c.high >= stopLossPrice : c.low <= stopLossPrice) || null;
+      }
+      const targets = takeProfitPrices.map(price => ({
+        price,
+        firstEligibleCandle: candles.find(c => side === 'SHORT' ? c.low <= price : c.high >= price) || null
+      }));
+      const sameCandle = Boolean(firstEntry && firstStop && firstEntry.time_ms === firstStop.time_ms);
+      return mcpResult({
+        ok: true, source, instrument, timeframe, orderPlacementUtc, placementMs, inferredSide: side,
+        entryPrice, stopLossPrice, takeProfitPrices, candleCountAfterPlacement: candles.length,
+        firstEntryEligibleCandle: firstEntry, firstStopEligibleAfterEntry: firstStop,
+        sameCandleStopEligible: sameCandle, intrabarSequenceProven: false,
+        intrabarSequenceWarning: sameCandle ? 'Entry and stop are in the same candle; OHLC does not prove the intrabar sequence.' : null,
+        takeProfitEligibility: targets,
+        accountFillStatus: 'UNVERIFIED_WITH_MARKET_DATA_ONLY',
+        accountFillProofRequired: 'Exchange order/fill history',
+        dataSourceConfigured: result.configured === true
+      });
+    });
+  },
+  {
+    serverInfo: { name: 'SCALP-Ω MCP', version: '1.0.0' },
+    instructions: MCP_INSTRUCTIONS
+  }
+);
+
+async function runMcpOnNodeRequest(req, res) {
+  const protocol = String(req.headers?.['x-forwarded-proto'] || 'https');
+  const host = String(req.headers?.host || new URL(MCP_BASE_URL).host);
+  const requestUrl = protocol + '://' + host + String(req.url || '/api/mcp');
+  let body;
+  if (!['GET','HEAD'].includes(String(req.method || '').toUpperCase())) {
+    if (req.body !== undefined) {
+      body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    } else {
+      body = await new Promise((resolve, reject) => {
+        const chunks = [];
+        req.on('data', chunk => chunks.push(Buffer.from(chunk)));
+        req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+        req.on('error', reject);
+      });
+    }
+  }
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers || {})) {
+    if (Array.isArray(value)) for (const v of value) headers.append(key, String(v));
+    else if (value != null) headers.set(key, String(value));
+  }
+  const webRequest = new Request(requestUrl, { method: req.method || 'GET', headers, body });
+  const webResponse = await scalpMcpHandler(webRequest);
+  res.statusCode = webResponse.status;
+  webResponse.headers.forEach((value, key) => res.setHeader(key, value));
+  if (!webResponse.body) { res.end(); return; }
+  for await (const chunk of webResponse.body) res.write(Buffer.from(chunk));
+  res.end();
+}
+
 import { getLiveMemory } from '../lib/market-memory.js';
 import { getMarketCandleCoverageMatrix, getMicrostructureHistory, insertTitanSnapshot, insertTitanFeature, insertTitanSystemEvent } from '../lib/supabase.js';
 import { buildInstitutionalAnalysis } from '../lib/institutional-engine.js';
@@ -7,6 +179,7 @@ import { compactAiInput } from '../lib/ai-context-compact.js';
 
 // Bybit private egress is pinned via vercel.json region configuration.
 export default async function handler(req,res){
+  if (req.query?.mcp === '1') return runMcpOnNodeRequest(req,res);
   if(req.method!=='GET')return res.status(405).json({ok:false,error:'Method not allowed'});
   const includeBybitAccount = req.query?.includeAccount === '1';
   const host=typeof req.headers.host==='string'?req.headers.host:'scalp-omega-ai-webhook.vercel.app';
