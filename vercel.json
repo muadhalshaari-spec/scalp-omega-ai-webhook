@@ -7,6 +7,10 @@
   },
   "rewrites": [
     {
+      "source": "/dashboard",
+      "destination": "/dashboard.html"
+    },
+    {
       "source": "/api/mcp",
       "destination": "/api/institutional?mcp=1"
     },
