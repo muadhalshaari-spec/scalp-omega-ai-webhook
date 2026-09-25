@@ -7,6 +7,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/mcp",
+      "destination": "/api/institutional?mcp=1"
+    },
+    {
       "source": "/api/history-sync",
       "destination": "/api/confluence?historySync=1"
     },
