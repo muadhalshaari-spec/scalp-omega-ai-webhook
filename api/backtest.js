@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   const instId = 'ETH-USDT-SWAP';
   const bars = ['1m','5m','15m','1H','4H','1D'];
   const target = 1000;
-  const backtest15mTarget = Math.min(5000, Math.max(1000, Number(req.query?.depth || 5000)));
+  const backtest15mTarget = Math.min(5000, Math.max(1000, Number(req.query?.depth || 2000)));
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 55_000);
 
@@ -64,7 +64,8 @@ export default async function handler(req, res) {
       derivatives: derivativeData,
       horizonBars:48,
       feesBps:5,
-      slippageBps:2
+      slippageBps:2,
+      maxTrades: Number.isFinite(Number(req.query?.maxTrades)) ? Math.min(1200, Math.max(100, Number(req.query.maxTrades))) : 1000
     });
     res.setHeader('Content-Type','application/json; charset=utf-8');
     res.setHeader('Cache-Control','no-store,no-cache,must-revalidate');
