@@ -11,8 +11,8 @@ export default async function handler(req,res){
     return res.status(data.available?200:502).json({
       ok:data.available===true,
       engine:'SCALP-Ω Bybit Full Market Data Adapter v3',
-      decisionAuthority:'TITAN_DETERMINISTIC',
-      decisionPolicy:'BYBIT_DATA_ONLY_NO_DECISION',
+      decisionAuthority:'CHATGPT_CONVERSATIONAL_ONLY',
+      decisionPolicy:'BYBIT_DATA_ONLY_CHATGPT_ONLY',
       ...data
     });
   }catch(e){
