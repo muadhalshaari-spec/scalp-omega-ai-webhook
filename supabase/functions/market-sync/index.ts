@@ -47,8 +47,13 @@ async function fetchBybitCandles(tf, fullBackfill) {
 }
 
 async function needsBackfill(source, instrument, tf) {
-  const rows = await sql`select count(*)::int as count from public.market_candles where source = ${source} and instrument = ${instrument} and timeframe = ${tf}`;
-  return Number(rows[0]?.count ?? 0) < TF_LIMIT;
+  const rows = await sql`
+    select rows_written
+    from public.market_backfill_state
+    where source=${source} and instrument=${instrument} and timeframe=${tf}
+    limit 1
+  `;
+  return Number(rows[0]?.rows_written ?? 0) < TF_LIMIT;
 }
 function num(v) {
   const n = Number(v);
@@ -201,14 +206,10 @@ async function ensureBackfillState() {
   }
 }
 async function primeCursor(state) {
-  if (state.cursor_ms !== null && state.cursor_ms !== undefined && Number.isFinite(Number(state.cursor_ms))) return Number(state.cursor_ms);
-  const rows = await sql`
-    select min(time_ms)::bigint as oldest
-    from public.market_candles
-    where source=${state.source} and instrument=${state.instrument} and timeframe=${state.timeframe}
-  `;
-  const oldest = Number(rows[0]?.oldest);
-  return Number.isFinite(oldest) ? oldest - 1 : Date.now();
+  if (state.cursor_ms !== null && state.cursor_ms !== undefined && Number.isFinite(Number(state.cursor_ms))) {
+    return Number(state.cursor_ms);
+  }
+  return Date.now();
 }
 function normalizeBackfillRow(source, instrument, timeframe, row, observedAt) {
   const ts = num(row?.time_ms ?? row?.timestamp ?? row?.[0]);
